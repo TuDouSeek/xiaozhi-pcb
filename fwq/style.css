@@ -1,0 +1,642 @@
+/* ==========================================================================
+   Swiss Minimalist Porcelain Palette (White / Cool Gray)
+   Single Screen / Fixed Viewport Fit
+   ========================================================================== */
+
+   :root {
+    --bg-body: #f5f7f9;
+    --bg-card: #ffffff;
+    --bg-input: #f8fafc;
+    --bg-subtle: #f1f4f8;
+    --bg-hover: #e9eef5;
+  
+    --border-light: #e5e9f0;
+    --border-subtle: #dbe2ea;
+    --border-focus: #3b82f6;
+  
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-tertiary: #94a3b8;
+  
+    --accent-blue: #2563eb;
+    --accent-blue-subtle: #eff6ff;
+    --accent-emerald: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-crimson: #dc2626;
+    --accent-crimson-bg: #fef2f2;
+    --accent-crimson-border: #fecaca;
+  
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  
+    --radius-xs: 6px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 14px;
+    --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  }
+  
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  
+  html, body {
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden; /* Strict no scroll */
+  }
+  
+  body {
+    background-color: var(--bg-body);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px 14px;
+  }
+  
+  .shell {
+    width: 100%;
+    max-width: 1280px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  /* Compact Masthead & Gateway Row */
+  .masthead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+    flex-shrink: 0;
+  }
+  
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .brand-glyph {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-subtle);
+    color: var(--accent-blue);
+  }
+  .brand-glyph svg { width: 17px; height: 17px; }
+  
+  .brand-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--text-primary);
+  }
+  
+  .brand-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+  
+  /* Header Config & Connection Status */
+  .header-conn-module {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .cfg {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  
+  .field-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .flex-ip { width: 220px; }
+  .flex-port { width: 90px; }
+  
+  .field-icon {
+    position: absolute;
+    left: 9px;
+    color: var(--text-tertiary);
+    display: flex;
+    pointer-events: none;
+  }
+  .field-icon svg { width: 14px; height: 14px; }
+  
+  input[type="text"],
+  input:not([type]) {
+    width: 100%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    padding: 6px 8px 6px 28px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: none;
+    transition: all 0.15s ease;
+  }
+  
+  input[type="text"]:focus,
+  input:not([type]):focus {
+    border-color: var(--border-focus);
+    background: #ffffff;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+  }
+  
+  /* Connection Badge */
+  .badge-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-light);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+  }
+  .dot.on {
+    background: var(--accent-emerald);
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  }
+  .dot.mid {
+    background: var(--accent-amber);
+    box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+  }
+  
+  /* Main Dashboard (2x2 Viewport Matrix) */
+  .dashboard {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 10px;
+  }
+  
+  /* Unified Card Component */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 0;
+    overflow: hidden;
+  }
+  
+  .card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+  }
+  
+  .section-tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-tertiary);
+    letter-spacing: 0.12em;
+    font-weight: 600;
+  }
+  
+  h2 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  
+  /* Top-Left: LiDAR Specific Styling */
+  .panel-lidar .lidar-content {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+  }
+  
+  .radar-box {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    max-height: 300px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: #f8fafc;
+    border: 1px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  
+  .radar-box canvas {
+    /* width: 100% !important;
+    height: 100% !important; */
+    display: block;
+  }
+  
+  /* .radar-crosshair {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: 
+      radial-gradient(circle, transparent 69%, rgba(0, 0, 0, 0.05) 70%, transparent 71%),
+      radial-gradient(circle, transparent 39%, rgba(0, 0, 0, 0.05) 40%, transparent 41%);
+  }
+
+  /* 雷达量程切换：与整站浅色 pill 语言一致 */
+  .range-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .range-label {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+  }
+  .range-btn {
+    flex: 1;
+    padding: 7px 0;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .range-btn.on {
+    color: #fff;
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+
+  /* 线性变焦推杆：覆于雷达盘右侧，纵向拖动 */
+  .zoom-rail {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 30px;
+    height: 200px;
+    max-height: 70%;
+    border-radius: 15px;
+    border: 1px solid var(--border-subtle);
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(2px);
+    touch-action: none;
+    z-index: 3;
+  }
+  .zoom-thumb {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    height: 30px;
+    border-radius: 13px;
+    background: var(--accent-blue-subtle);
+    border: 1px solid var(--accent-blue);
+    box-shadow: 0 1px 4px rgba(37, 99, 235, 0.35);
+    touch-action: none;
+    cursor: ns-resize;
+  }
+  .zoom-thumb.free { transition: none; }
+  .zoom-thumb.back { transition: top 0.25s ease-out; } */
+  
+  .mini-gauge {
+    
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+   
+    height: 20%;
+  }
+  .gauge{
+    display: flex;
+    
+  }
+
+  /* Slider Components */
+  .slider-group {
+    margin-bottom: 6px;
+  }
+  
+  .slider-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  
+  .slider-meta label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  
+  .val-pill {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--bg-subtle);
+    padding: 1px 7px;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+  }
+  .val-pill small {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-left: 2px;
+  }
+  
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--border-light);
+    border-radius: 2px;
+    outline: none;
+  }
+  
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text-primary);
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+  }
+  
+  /* Precision Tactile Buttons */
+  button {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xs);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 6px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  
+  button:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-subtle);
+  }
+  
+  button:active,
+  button.hold.on,
+  button.key.on {
+    background: #e2e8f0;
+    border-color: #cbd5e1;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  button.btn-primary {
+    background: var(--text-primary);
+    color: #ffffff;
+    border: 1px solid var(--text-primary);
+    font-weight: 600;
+  }
+  button.btn-primary:hover {
+    background: #1e293b;
+  }
+  
+  button.warn {
+    background: var(--accent-crimson-bg);
+    border-color: var(--accent-crimson-border);
+    color: var(--accent-crimson);
+    font-weight: 600;
+  }
+  button.warn:hover {
+    background: #fee2e2;
+  }
+  
+  /* D-Pad Controller Compact */
+  .pad-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 2px 0;
+    flex: 1;
+    align-items: center;
+  }
+  
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(3, 72px);
+    grid-auto-rows: 42px;
+    gap: 6px;
+  }
+  .pad .sp { visibility: hidden; }
+  
+  .control-key {
+    flex-direction: row;
+    gap: 4px;
+    padding: 0;
+    border-radius: var(--radius-xs);
+    font-size: 11px;
+  }
+  .control-key svg { width: 14px; height: 14px; }
+  .control-key span { font-weight: 600; font-size: 11px; }
+  
+  /* Calibration Motors */
+  .motor-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    flex: 1;
+  }
+  
+  .motor-unit {
+    background: var(--bg-input);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  
+  .motor-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .motor-name {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  
+  .btn-cluster {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+  }
+  .btn-cluster button {
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+  
+  /* Telemetry Grid */
+  .telemetry-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    flex: 1;
+  }
+  
+  .tele {
+    background: var(--bg-input);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xs);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+  }
+  
+  .tele small {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+  
+  .tele-val {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  
+  .tele-val .unit {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+  }
+  
+  /* Hints and Status Footers */
+  .hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .hint svg { width: 13px; height: 13px; stroke: var(--text-tertiary); }
+  
+  .status-foot {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .pulse-indicator {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-tertiary);
+  }
+  
+  /* Mobile & Tablet Adaptation */
+  @media (max-width: 900px) {
+    html, body {
+      overflow: auto; /* Fallback scroll strictly for small screens if needed */
+      height: auto;
+    }
+    body {
+      padding: 8px;
+    }
+    .masthead {
+      flex-direction: column;
+      gap: 8px;
+      align-items: stretch;
+    }
+    .header-conn-module {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .cfg {
+      display: flex;
+      width: 100%;
+    }
+    .flex-ip { flex: 1; }
+    .flex-port { width: 80px; }
+    .dashboard {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto;
+    }
+    .motor-row {
+      grid-template-columns: 1fr;
+    }
+    .radar-box {
+      max-height: 80%;
+    }
+  }

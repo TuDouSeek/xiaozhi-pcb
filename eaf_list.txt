@@ -1,0 +1,11 @@
+L-伤心-1.eaf
+L-单左眼闭-1.eaf
+L-生气-1.eaf
+Public-左右滚动-1.eaf
+Public-微笑-1.eaf
+Public-无语-1.eaf
+Public-眨眼-1.eaf
+Public-闭眼-1.eaf
+R-伤心-1.eaf
+R-单左眼闭-1.eaf
+R-生气-1.eaf

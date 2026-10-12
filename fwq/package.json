@@ -1,0 +1,12 @@
+{
+  "name": "fwq-console",
+  "version": "1.0.0",
+  "private": true,
+  "description": "双轮底盘 Web 控制台：静态托管 + UDP 雷达桥接",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

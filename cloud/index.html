@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>电机云端控制台</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+body{background:#0b1118;color:#d7e3f0;font-family:sans-serif;max-width:560px;margin:12px auto;padding:0 12px}
+h2{color:#58c4ff}h3{color:#7d93a8;margin:14px 0 6px}
+.card{background:#141d28;border:1px solid #24405c;border-radius:10px;padding:10px;margin-bottom:10px}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+button{flex:1;min-width:64px;padding:12px;border-radius:10px;border:1px solid #24405c;background:#17324a;color:#fff;font-size:15px;touch-action:none;user-select:none}
+button.warn{background:#3a1414;border-color:#7a2b2b}
+button.hold.on{background:#1d5c38}
+input[type=range]{width:100%;margin:8px 0}
+.tele{font-family:monospace;font-size:14px;color:#7dffb2}
+#st{margin:8px 0;font-size:13px;color:#7d93a8}
+.cfg{display:flex;gap:6px;margin:8px 0}
+.cfg input{flex:1;padding:8px;border-radius:8px;border:1px solid #24405c;background:#060a10;color:#d7e3f0}
+</style>
+</head>
+<body>
+<h2>电机云端控制台</h2>
+<div class="cfg">
+<input id="broker" value="ws://103.231.59.46:8083/mqtt" placeholder="ws://IP:8083/mqtt">
+<button id="connBtn" onclick="toggle()">连接</button>
+</div>
+<div id="st">未连接</div>
+
+<h3>虚拟遥控（按住行进，松开回停）</h3>
+<div class="card"><div class="row">
+<button class="hold" data-v="60" data-w="0">前进</button>
+<button class="hold" data-v="-60" data-w="0">后退</button>
+<button class="hold" data-v="0" data-w="-60">左转</button>
+<button class="hold" data-v="0" data-w="60">右转</button>
+<button class="warn" onclick="estop()">停止</button>
+</div></div>
+
+<h3>双路无级滑块（-100 ~ 100）</h3>
+<div class="card">
+<label>左轮 <b id="vL">0</b>%</label>
+<input type="range" id="sL" min="-100" max="100" value="0" oninput="sl()"><br>
+<label>右轮 <b id="vR">0</b>%</label>
+<input type="range" id="sR" min="-100" max="100" value="0" oninput="sl()">
+<div class="row"><button class="warn" onclick="zero()">双轮回零</button></div>
+</div>
+
+<h3>实时遥测 @5Hz</h3>
+<div class="card">
+<div class="tele" id="tL">左轮 rpm - · cnt -</div>
+<div class="tele" id="tR">右轮 rpm - · cnt -</div>
+</div>
+
+<script>
+let client = null, connected = false;
+// v/w 差速（遥控）与滑块直驱二选一：按住遥控键期间以遥控为准
+let holdV = 0, holdW = 0, holding = false;
+let sL = 0, sR = 0;
+
+function setSt(t, ok) {
+  const el = document.getElementById('st');
+  el.textContent = t;
+  el.style.color = ok ? '#7dffb2' : '#7d93a8';
+}
+function toggle() {
+  if (connected) { client.end(); return; }
+  const url = document.getElementById('broker').value.trim();
+  setSt('连接中 ' + url + ' …', false);
+  client = mqtt.connect(url, { connectTimeout: 5000, reconnectPeriod: 3000 });
+  client.on('connect', () => {
+    connected = true;
+    document.getElementById('connBtn').textContent = '断开';
+    setSt('已连接 @5Hz 心跳', true);
+    client.subscribe('robot/telemetry', { qos: 0 });
+  });
+  client.on('message', (topic, msg) => {
+    if (topic !== 'robot/telemetry') return;
+    try {
+      const j = JSON.parse(msg.toString());
+      document.getElementById('tL').textContent =
+        '左轮 rpm ' + j.rpm_l + ' · cnt ' + j.cnt_l;
+      document.getElementById('tR').textContent =
+        '右轮 rpm ' + j.rpm_r + ' · cnt ' + j.cnt_r;
+    } catch (e) {}
+  });
+  client.on('close', () => {
+    connected = false;
+    document.getElementById('connBtn').textContent = '连接';
+    setSt('断开，重连中…', false);
+  });
+  client.on('error', () => setSt('连接错误：检查 Broker WS 端口 8083 是否放行', false));
+}
+// 200ms 心跳：既是遥控下发，也是 2s 看门狗的保活；断开页面即停发，车自动停
+setInterval(() => {
+  if (!connected) return;
+  let l, r;
+  if (holding) { l = holdV - holdW; r = holdV + holdW; }
+  else { l = sL; r = sR; }
+  l = Math.max(-100, Math.min(100, l));
+  r = Math.max(-100, Math.min(100, r));
+  client.publish('robot/cmd', JSON.stringify({ speed_l: l, speed_r: r }), { qos: 0 });
+}, 200);
+function sl() {
+  sL = +document.getElementById('sL').value;
+  sR = +document.getElementById('sR').value;
+  document.getElementById('vL').textContent = sL;
+  document.getElementById('vR').textContent = sR;
+}
+function zero() {
+  document.getElementById('sL').value = 0;
+  document.getElementById('sR').value = 0;
+  sl();
+}
+function estop() {
+  holding = false;
+  document.querySelectorAll('button.hold').forEach(b => b.classList.remove('on'));
+  if (connected) client.publish('robot/cmd', JSON.stringify({ action: 'stop' }), { qos: 0 });
+}
+document.querySelectorAll('button.hold').forEach(b => {
+  const v = +b.dataset.v, w = +b.dataset.w;
+  const on = e => { e.preventDefault(); holding = true; holdV = v; holdW = w; b.classList.add('on'); };
+  const off = () => { holding = false; holdV = 0; holdW = 0; b.classList.remove('on'); };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointerleave', off);
+  b.addEventListener('pointercancel', off);
+});
+sl();
+</script>
+</body>
+</html>

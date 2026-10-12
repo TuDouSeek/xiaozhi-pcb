@@ -1,0 +1,10 @@
+{
+    "type": "xiaozhi-pcb-arm",
+    "target": "esp32s3",
+    "builds": [
+        {
+            "name": "xiaozhi-pcb-arm",
+            "sdkconfig_append": []
+        }
+    ]
+}
