@@ -22,6 +22,7 @@ const TYPES = {
 http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
   if (p === '/') p = '/index.html';
+  if (p === '/motion') p = '/motion.html';
   const file = path.normalize(path.join(ROOT, p));
   if (!file.startsWith(ROOT)) {
     res.writeHead(403); res.end('forbidden'); return;

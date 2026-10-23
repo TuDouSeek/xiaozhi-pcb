@@ -1,241 +1,80 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Precision Chassis · 控制台</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TRACKED ROVER · 控制台</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="shell">
-    
-    <!-- Top Bar Navigation -->
-    <header class="masthead">
-      <div class="brand">
-        <div class="brand-glyph">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M12 3v18M3 12h18"/>
-          </svg>
-        </div>
-        <div>
-          <h1 class="brand-title">AERO // DUAL-CHASSIS</h1>
-          <p class="brand-sub">精密双轮底盘综合遥控终端</p>
-        </div>
-      </div>
-
-      <!-- 1. 连接管理 (Inline Compact Header Module) -->
-      <div class="header-conn-module">
-        <div class="cfg">
-          <div class="field-wrap flex-ip">
-            <span class="field-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-                <circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-              </svg>
-            </span>
-            <input id="brokerIp" placeholder="节点 IP (103.231.59.46)">
-          </div>
-          <div class="field-wrap flex-port">
-            <span class="field-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-                <path d="M4 17l6-6-6-6M12 19h8"/>
-              </svg>
-            </span>
-            <input id="brokerPort" class="port" placeholder="端口" inputmode="numeric">
-          </div>
-          <button id="connBtn" class="conn btn-primary">
-            <span>连接</span>
-          </button>
-        </div>
-        <div class="badge-status" id="connState">
-          <span class="dot" id="dot"></span>
-          <span id="connText">离线</span>
-        </div>
-      </div>
-    </header>
-
-    <!-- Main Viewport Grid (No Scroll Fit) -->
-    <main class="dashboard">
-
-      <!-- TOP-LEFT: 激光雷达点云模块 -->
-      <section class="card panel-lidar">
-        <div class="card-header">
-          <span class="section-tag">01 / SPATIAL LIDAR</span>
-          <h2>激光雷达点云 (UDP:8888 → WS:8889)</h2>
-        </div>
-        
-        <div class="lidar-content">
-          <div class="radar-box">
-            <canvas id="lidar"></canvas>
-            <div class="radar-crosshair"></div>
-            <!-- 线性变焦推杆：上下拖动连续缩放量程，松手自动回中（3m） -->
-            <div class="zoom-rail" id="zoomRail">
-              <div class="zoom-thumb" id="zoomThumb"></div>
-            </div>
-          </div>
-          <div class="gauge mini-gauge">
-            <div class="tele">
-              <small>雷达转速</small>
-              <div class="tele-val"><span id="lrpm">-</span><span class="unit">RPM</span></div>
-            </div>
-            <div class="tele">
-              <small>有效点数</small>
-              <div class="tele-val"><span id="ln">-</span><span class="unit">/120</span></div>
-            </div>
-            <div class="range-bar" id="rangeBar">
-              <span class="range-label">量程</span>
-              <button class="range-btn" data-range="1">1m</button>
-              <button class="range-btn" data-range="2">2m</button>
-              <button class="range-btn on" data-range="3">3m</button>
-              <button class="range-btn" data-range="6">6m</button>
-            </div>
-          </div>
-          
-        </div>
-        <div class="status-foot" id="lstat">
-          <span class="pulse-indicator"></span>
-          <span class="foot-text" id="lstatText">等待点云流数据...</span>
-        </div>
-      </section>
-
-      <!-- TOP-RIGHT: 运动主控 (Kinetics) -->
-      <section class="card panel-kinetics">
-        <div class="card-header">
-          <span class="section-tag">02 / KINETICS</span>
-          <h2>双轴矢量运动控制</h2>
-        </div>
-
-        <div class="slider-group">
-          <div class="slider-meta">
-            <label for="spd">基准巡航速度</label>
-            <div class="val-pill"><span id="spdVal">60</span><small>%</small></div>
-          </div>
-          <input type="range" id="spd" min="0" max="100" value="60">
-        </div>
-
-        <div class="pad-wrapper">
-          <div class="pad">
-            <span class="sp"></span>
-            <button class="hold control-key" data-act="forward" aria-label="前进">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <path d="M12 19V5M5 12l7-7 7 7"/>
-              </svg>
-              <span>前 进</span>
-            </button>
-            <span class="sp"></span>
-
-            <button class="hold control-key" data-act="left" aria-label="左转">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <path d="M19 12H5M12 19l-7-7 7-7"/>
-              </svg>
-              <span>左 转</span>
-            </button>
-            <button class="warn control-key key-brake" id="brakeBtn" aria-label="急停">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <rect x="6" y="6" width="12" height="12" rx="2.5"/>
-              </svg>
-              <span>急 停</span>
-            </button>
-            <button class="hold control-key" data-act="right" aria-label="右转">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <path d="M5 12h14M12 5l7 7-7 7"/>
-              </svg>
-              <span>右 转</span>
-            </button>
-
-            <span class="sp"></span>
-            <button class="hold control-key" data-act="backward" aria-label="后退">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                <path d="M12 5v14M19 12l-7 7-7-7"/>
-              </svg>
-              <span>后 退</span>
-            </button>
-            <span class="sp"></span>
-          </div>
-        </div>
-
-        <div class="hint">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <rect x="2" y="4" width="20" height="16" rx="3"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
-          </svg>
-          支持 WASD / 方向键点动或长按，空格键即刻急停
-        </div>
-      </section>
-
-      <!-- BOTTOM-LEFT: 遥测看板 (Metrics) -->
-      <section class="card panel-metrics">
-        <div class="card-header">
-          <span class="section-tag">03 / TELEMETRY</span>
-          <h2>电机动力实时遥测</h2>
-        </div>
-        <div class="gauge telemetry-grid">
-          <div class="tele">
-            <small>电机 A · 实时转速</small>
-            <div class="tele-val"><span id="rpmA">-</span><span class="unit">RPM</span></div>
-          </div>
-          <div class="tele">
-            <small>电机 A · 编码脉冲</small>
-            <div class="tele-val"><span id="cntA">-</span><span class="unit">PULSE</span></div>
-          </div>
-          <div class="tele">
-            <small>电机 B · 实时转速</small>
-            <div class="tele-val"><span id="rpmB">-</span><span class="unit">RPM</span></div>
-          </div>
-          <div class="tele">
-            <small>电机 B · 编码脉冲</small>
-            <div class="tele-val"><span id="cntB">-</span><span class="unit">PULSE</span></div>
-          </div>
-        </div>
-        <div class="status-foot" id="beat">
-          <span class="pulse-indicator"></span>
-          <span class="foot-text" id="beatText">心跳等待接入 · 状态刷新 -</span>
-        </div>
-      </section>
-
-      <!-- BOTTOM-RIGHT: 双电机独立调试 (Calibration) -->
-      <section class="card panel-calibration">
-        <div class="card-header">
-          <span class="section-tag">04 / CALIBRATION</span>
-          <h2>双电机独立调试模式</h2>
-        </div>
-
-        <div class="motor-row">
-          <!-- 电机 A -->
-          <div class="motor-unit">
-            <div class="motor-head">
-              <span class="motor-name">MOTOR A (左轮)</span>
-              <div class="val-pill"><span id="vA">0</span><small>%</small></div>
-            </div>
-            <input type="range" id="sA" min="-100" max="100" value="0">
-            <div class="btn-cluster">
-              <button data-ma="A" data-md="1">正转</button>
-              <button data-ma="A" data-md="-1">反转</button>
-              <button class="warn" data-ma="A" data-md="0">停</button>
-            </div>
-          </div>
-
-          <!-- 电机 B -->
-          <div class="motor-unit">
-            <div class="motor-head">
-              <span class="motor-name">MOTOR B (右轮)</span>
-              <div class="val-pill"><span id="vB">0</span><small>%</small></div>
-            </div>
-            <input type="range" id="sB" min="-100" max="100" value="0">
-            <div class="btn-cluster">
-              <button data-ma="B" data-md="1">正转</button>
-              <button data-ma="B" data-md="-1">反转</button>
-              <button class="warn" data-ma="B" data-md="0">停</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-    </main>
-  </div>
-  <script src="app.js"></script>
+<div class="yacht">
+<header class="topbar card">
+<div class="brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg></div>
+<div><div class="brand-title">TRACKED ROVER</div><div class="brand-sub">LIDAR ROBOT CONTROL DECK</div></div></div>
+<div class="alarm"><span class="alarm-dot"></span><span id="beatText">心跳等待接入 · 状态刷新 -</span></div>
+<div class="conn"><input id="brokerIp" placeholder="节点 IP"><input id="brokerPort" class="port" placeholder="端口"><button id="connBtn">连接</button><div class="conn-state"><span class="dot" id="dot"></span><span id="connText">离线</span></div></div>
+</header>
+<main class="deck">
+<section class="col">
+<div class="card">
+<div class="card-t"><span>姿态 / 航向</span><span class="tag">HDG</span></div>
+<div class="hdg-row"><div><div class="lbl">航向角</div><div class="big" id="hdgVal">000&deg;</div></div>
+<div class="compass"><canvas id="lidar"></canvas><div class="zoom-rail" id="zoomRail"><div class="zoom-thumb" id="zoomThumb"></div></div></div>
+<div><div class="lbl">雷达转速</div><div class="big"><span id="lrpm">-</span><small> RPM</small></div><div class="lbl" style="margin-top:8px">有效点数</div><div class="big"><span id="ln">-</span></div></div></div>
+<div class="range-bar" id="rangeBar"><span>量程</span><button class="range-btn" data-range="1">1m</button><button class="range-btn" data-range="2">2m</button><button class="range-btn on" data-range="3">3m</button><button class="range-btn" data-range="6">6m</button></div>
+<div class="foot"><span class="pulse"></span><span id="lstatText">等待点云流数据...</span></div>
+</div>
+<div class="card">
+<div class="card-t"><span>电机动力遥测</span><span class="tag">TELEMETRY</span></div>
+<div class="tele-grid">
+<div class="tele"><small>电机 A · 转速</small><b><span id="rpmA">-</span> <i>RPM</i></b></div>
+<div class="tele"><small>电机 A · 脉冲</small><b><span id="cntA">-</span> <i>PULSE</i></b></div>
+<div class="tele"><small>电机 B · 转速</small><b><span id="rpmB">-</span> <i>RPM</i></b></div>
+<div class="tele"><small>电机 B · 脉冲</small><b><span id="cntB">-</span> <i>PULSE</i></b></div>
+</div>
+<div class="pos-grid"><div><div class="lbl">经度</div><div class="mono">121&deg;28.880' E</div></div><div><div class="lbl">纬度</div><div class="mono">31&deg;13.870' N</div></div></div>
+</div>
+</section>
+<section class="col center">
+<div class="card drive">
+<div class="card-t"><span>三维环境感知</span><span class="tag">3D VIEW</span></div>
+<div class="drive3d-wrap"><canvas id="drive3d"></canvas>
+<div class="drive3d-hud"><div class="hud-speed"><span id="hudSpeed">0</span><small>%</small></div><div class="hud-dir" id="hudDir">待机</div></div>
+<div class="drive3d-legend"><span class="lg-car"></span>本车<span class="lg-obs"></span>障碍物<span class="lg-road"></span>路面</div></div>
+<div class="foot"><span class="pulse"></span><span id="driveStat">3D 视图 · 雷达点云驱动障碍物</span></div>
+</div>
+<div class="card">
+<div class="card-t"><span>双轴矢量运动控制</span><span class="tag">KINETICS</span></div>
+<div class="slider-row"><label>摇杆上限速度</label><div class="val"><span id="spdVal">60</span>%</div></div>
+<input type="range" id="spd" min="0" max="100" value="60">
+<div class="joy-row">
+<div class="joy" id="joy"><div class="joy-knob" id="joyKnob"></div></div>
+<div class="joy-side"><button class="key-brake" id="brakeBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>急停</button>
+<div class="joy-read"><span>L <b id="joyL">0</b></span><span>R <b id="joyR">0</b></span></div></div>
+</div>
+<div class="foot">拖动摇杆或 WASD / 方向键，松手回中，空格急停</div>
+</div>
+</section>
+<section class="col">
+<div class="card">
+<div class="card-t"><span>双电机独立调试</span><span class="tag">CALIBRATION</span></div>
+<div class="motor"><div class="motor-h"><span>MOTOR A · 左轮</span><b><span id="vA">0</span>%</b></div><input type="range" id="sA" min="-100" max="100" value="0">
+<div class="btns"><button data-ma="A" data-md="1">正转</button><button data-ma="A" data-md="-1">反转</button><button class="warn" data-ma="A" data-md="0">停</button></div></div>
+<div class="motor"><div class="motor-h"><span>MOTOR B · 右轮</span><b><span id="vB">0</span>%</b></div><input type="range" id="sB" min="-100" max="100" value="0">
+<div class="btns"><button data-ma="B" data-md="1">正转</button><button data-ma="B" data-md="-1">反转</button><button class="warn" data-ma="B" data-md="0">停</button></div></div>
+</div>
+<div class="card">
+<div class="card-t"><span>速度曲线</span><span class="tag">RPM LOG</span></div>
+<canvas id="rpmChart" height="120"></canvas>
+<div class="stat-row"><div><div class="lbl">左轮</div><div class="big" id="rpmA2">-</div></div><div><div class="lbl">右轮</div><div class="big" id="rpmB2">-</div></div></div>
+</div>
+<div class="card status-card"><div class="card-t"><span>链路状态</span><span class="tag">LINK</span></div><div class="foot"><span class="pulse"></span><span id="lstat">等待点云流数据...</span></div></div>
+</section>
+</main>
+</div>
+<script src="app.js"></script>
 </body>
 </html>

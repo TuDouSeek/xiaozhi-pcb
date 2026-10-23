@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Motion Lab · 履带运动调试</title>
+  <link rel="stylesheet" href="motion.css">
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar card">
+      <div>
+        <p class="eyebrow">MOTION LAB / TRACKED ROBOT</p>
+        <h1>履带运动调试台</h1>
+        <p class="sub">距离、双履带速度、摇杆与编码器反馈的独立实验页面</p>
+      </div>
+      <a class="back" href="/">返回主控制台</a>
+    </header>
+
+    <section class="card connection">
+      <div class="section-head"><div><span class="eyebrow">01 / LINK</span><h2>控制链路</h2></div><span id="state" class="status offline">离线</span></div>
+      <div class="form-row">
+        <label>Broker IP<input id="brokerIp" value="103.231.59.46"></label>
+        <label>WebSocket 端口<input id="brokerPort" value="8083" inputmode="numeric"></label>
+        <button id="connectBtn" class="primary">连接</button>
+        <button id="stopBtn" class="danger">急停</button>
+      </div>
+      <p id="linkHint" class="hint">连接后才会发送指令。页面关闭、连接断开或反馈超时会尝试发送停止。</p>
+    </section>
+
+    <div class="grid">
+      <section class="card distance">
+        <div class="section-head"><div><span class="eyebrow">02 / DISTANCE</span><h2>按距离运行</h2></div><span class="pill">有效直径 68 mm</span></div>
+        <div class="distance-form">
+          <label>距离（mm）<input id="distance" type="number" min="1" max="100000" step="1" value="500"></label>
+          <label>速度（%）<input id="distanceSpeed" type="number" min="5" max="100" step="1" value="35"></label>
+          <select id="distanceDir" aria-label="方向"><option value="1">前进</option><option value="-1">后退</option></select>
+        </div>
+        <div class="metric-row"><div><small>理论圈数</small><strong id="revolutions">2.340</strong><span>圈</span></div><div><small>目标计数（可校准）</small><strong id="targetCounts">7822</strong><span>count</span></div></div>
+        <div class="progress"><i id="distanceProgress"></i></div>
+        <p id="distanceStatus" class="hint">距离控制在浏览器端根据 telemetry 计数闭环，仅用于调试。</p>
+        <div class="actions"><button id="distanceStart" class="primary">开始距离动作</button><button id="distanceCancel" class="secondary">取消动作</button></div>
+      </section>
+
+      <section class="card telemetry">
+        <div class="section-head"><div><span class="eyebrow">03 / FEEDBACK</span><h2>编码器反馈</h2></div><span id="feedbackState" class="status offline">等待</span></div>
+        <div class="feedback-grid"><div><small>左轮 RPM</small><strong id="rpmL">—</strong></div><div><small>右轮 RPM</small><strong id="rpmR">—</strong></div><div><small>左轮计数</small><strong id="countL">—</strong></div><div><small>右轮计数</small><strong id="countR">—</strong></div></div>
+        <div class="config-grid"><label>输出轴每圈计数<input id="countsPerRev" type="number" min="1" step="1" value="3344"></label><label>控制频率<input value="5 Hz" disabled></label></div>
+        <p class="hint">默认 3344 = 11 PPR × 76 减速比 × AB 四倍频。若实测不同，只修改此处，不改固件。</p>
+      </section>
+
+      <section class="card tracks">
+        <div class="section-head"><div><span class="eyebrow">04 / TRACKS</span><h2>双履带独立滑块</h2></div><span class="pill">-100 ~ 100%</span></div>
+        <div class="track"><div class="track-label"><b>左履带 A</b><output id="leftValue">0%</output></div><input id="leftSlider" type="range" min="-100" max="100" value="0"><div class="mini-actions"><button data-track="left" data-value="-60">反转</button><button data-track="left" data-value="0">停止</button><button data-track="left" data-value="60">正转</button></div></div>
+        <div class="track"><div class="track-label"><b>右履带 B</b><output id="rightValue">0%</output></div><input id="rightSlider" type="range" min="-100" max="100" value="0"><div class="mini-actions"><button data-track="right" data-value="-60">反转</button><button data-track="right" data-value="0">停止</button><button data-track="right" data-value="60">正转</button></div></div>
+        <button id="centerTracks" class="secondary wide">双履带回中并停止</button>
+      </section>
+
+      <section class="card joystick-card">
+        <div class="section-head"><div><span class="eyebrow">05 / JOYSTICK</span><h2>差速摇杆</h2></div><span class="pill">纵向速度 · 横向转向</span></div>
+        <div class="joy-layout"><div id="joystick" class="joystick"><div class="joy-cross"></div><div id="knob" class="knob"></div></div><div class="joy-values"><div>速度 <b id="joyV">0</b>%</div><div>转向 <b id="joyW">0</b>%</div><div>左轮 <b id="joyL">0</b>%</div><div>右轮 <b id="joyR">0</b>%</div><p class="hint">按住拖动，松手自动回中并停止。</p></div></div>
+      </section>
+    </div>
+
+    <footer class="card footer"><b>安全提示</b>：首次测试请抬起机器人，先用 10%～20% 速度；距离动作依赖编码器计数，发现方向、计数或反馈异常立即点击“急停”。</footer>
+  </main>
+  <script src="motion.js"></script>
+</body>
+</html>

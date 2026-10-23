@@ -225,6 +225,10 @@ private:
         cfg.enc_b1 = ENCODER_B_A_PIN;
         cfg.enc_b2 = ENCODER_B_B_PIN;
         cfg.stby = MOTOR_STBY_PIN;
+        // 右轮（B 路）电机极性反接：实测"前进"时右轮倒转、车身原地右转，
+        // 而"右转"指令反而双轮同向直行。这里翻转 B 路相位，驱动方向与编码器
+        // 符号一起取反，rpm/cnt/闭环 PID 仍自洽，不需要拆电机线。
+        cfg.invert_b = true;
         motors_ = std::make_unique<MotorController>(cfg);
         // 后台测速 20ms（Core 1）：刷新 RPM + 2s 一次遥测日志；
         // 默认开环，闭环需显式 EnableClosedLoop(true)。
