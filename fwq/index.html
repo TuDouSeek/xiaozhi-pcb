@@ -19,6 +19,7 @@
 </header>
 <main class="deck">
 <section class="col">
+
 <div class="card">
 <div class="card-t"><span>姿态 / 航向</span><span class="tag">HDG</span></div>
 <div class="hdg-row"><div><div class="lbl">航向角</div><div class="big" id="hdgVal">000&deg;</div></div>
@@ -35,8 +36,9 @@
 <div class="tele"><small>电机 B · 转速</small><b><span id="rpmB">-</span> <i>RPM</i></b></div>
 <div class="tele"><small>电机 B · 脉冲</small><b><span id="cntB">-</span> <i>PULSE</i></b></div>
 </div>
-<div class="pos-grid"><div><div class="lbl">经度</div><div class="mono">121&deg;28.880' E</div></div><div><div class="lbl">纬度</div><div class="mono">31&deg;13.870' N</div></div></div>
+
 </div>
+
 </section>
 <section class="col center">
 <div class="card drive">
@@ -46,6 +48,17 @@
 <div class="drive3d-legend"><span class="lg-car"></span>本车<span class="lg-obs"></span>障碍物<span class="lg-road"></span>路面</div></div>
 <div class="foot"><span class="pulse"></span><span id="driveStat">3D 视图 · 雷达点云驱动障碍物</span></div>
 </div>
+<div class="card">
+<div class="card-t"><span>直行配平</span><span class="tag">BALANCE</span></div>
+<div class="motor"><div class="motor-h"><span>右轮系数</span><b><span id="balVal">100</span>%</b></div><input type="range" id="bal" min="80" max="120" value="100">
+<div class="btns"><button id="balAuto">自动标定</button><button class="warn" id="balReset">复位</button></div></div>
+<div class="foot" id="balHint">只缩放右轮前进/后退/摇杆速度。跑偏时点「自动标定」：以 60% 直行 2.5s，按实测 RPM 反推系数</div>
+</div>
+
+
+</section>
+<section class="col">
+
 <div class="card">
 <div class="card-t"><span>双轴矢量运动控制</span><span class="tag">KINETICS</span></div>
 <div class="slider-row"><label>摇杆上限速度</label><div class="val"><span id="spdVal">60</span>%</div></div>
@@ -57,21 +70,24 @@
 </div>
 <div class="foot">拖动摇杆或 WASD / 方向键，松手回中，空格急停</div>
 </div>
-</section>
-<section class="col">
-<div class="card">
-<div class="card-t"><span>双电机独立调试</span><span class="tag">CALIBRATION</span></div>
-<div class="motor"><div class="motor-h"><span>MOTOR A · 左轮</span><b><span id="vA">0</span>%</b></div><input type="range" id="sA" min="-100" max="100" value="0">
-<div class="btns"><button data-ma="A" data-md="1">正转</button><button data-ma="A" data-md="-1">反转</button><button class="warn" data-ma="A" data-md="0">停</button></div></div>
-<div class="motor"><div class="motor-h"><span>MOTOR B · 右轮</span><b><span id="vB">0</span>%</b></div><input type="range" id="sB" min="-100" max="100" value="0">
-<div class="btns"><button data-ma="B" data-md="1">正转</button><button data-ma="B" data-md="-1">反转</button><button class="warn" data-ma="B" data-md="0">停</button></div></div>
-</div>
+
+
 <div class="card">
 <div class="card-t"><span>速度曲线</span><span class="tag">RPM LOG</span></div>
 <canvas id="rpmChart" height="120"></canvas>
 <div class="stat-row"><div><div class="lbl">左轮</div><div class="big" id="rpmA2">-</div></div><div><div class="lbl">右轮</div><div class="big" id="rpmB2">-</div></div></div>
 </div>
 <div class="card status-card"><div class="card-t"><span>链路状态</span><span class="tag">LINK</span></div><div class="foot"><span class="pulse"></span><span id="lstat">等待点云流数据...</span></div></div>
+</section>
+<section class="track-dock" aria-label="履带控制">
+<div class="card track-card">
+<div class="card-t"><span>左履带</span><span class="tag">TRACK L</span></div>
+<div class="track-control"><div class="track-control-h"><span>速度</span><b><span id="vA">0</span>%</b></div><div class="track-slider-row"><div class="track-scale"><span>前进</span><span>停止</span><span>后退</span></div><input type="range" id="sA" min="-100" max="100" value="0" aria-label="左履带速度" aria-orientation="vertical"></div></div>
+</div>
+<div class="card track-card">
+<div class="card-t"><span>右履带</span><span class="tag">TRACK R</span></div>
+<div class="track-control"><div class="track-control-h"><span>速度</span><b><span id="vB">0</span>%</b></div><div class="track-slider-row"><div class="track-scale"><span>前进</span><span>停止</span><span>后退</span></div><input type="range" id="sB" min="-100" max="100" value="0" aria-label="右履带速度" aria-orientation="vertical"></div></div>
+</div>
 </section>
 </main>
 </div>

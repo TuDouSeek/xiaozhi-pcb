@@ -211,6 +211,8 @@ Ld14MotorCmdSink s_motor_cmd;
 Ld14MotorTelSink s_motor_tel;
 Ld14TrimSetSink s_trim_set;
 Ld14TrimGetSink s_trim_get;
+Ld14TuneGetSink s_tune_get;
+Ld14TuneSetSink s_tune_set;
 int s_motor_dir[2] = {0, 0};    // 0=stop 1=forward 2=backward 3=brake
 int s_motor_speed[2] = {0, 0};  // 占空比 0~100
 
@@ -321,6 +323,54 @@ esp_err_t OnMotorStatus(httpd_req_t* req) {
                      (double)(s_trim_get ? s_trim_get(0) : 1.0f),
                      s_motor_dir[1], s_motor_speed[1], (double)rpm_b, (long)cnt_b,
                      (double)(s_trim_get ? s_trim_get(1) : 1.0f));
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, body, n);
+}
+
+// GET /api/motor/tune[?closed=0|1&kp=&ki=&kd=&gear=&noload=&trim_a=&trim_b=][&save=1]
+// 无参数时只回读；带 save=1 时写入 NVS，重启后自动恢复。
+esp_err_t OnMotorTune(httpd_req_t* req) {
+    SetCors(req);
+    if (!s_tune_get || !s_tune_set) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                   "tune sink not bound");
+    }
+    Ld14TuneConfig cfg = s_tune_get();
+    char query[256] = {};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char val[24] = {};
+        bool changed = false;
+        auto get = [&](const char* key) -> const char* {
+            if (httpd_query_key_value(query, key, val, sizeof(val)) != ESP_OK) {
+                return nullptr;
+            }
+            return val;
+        };
+        const char* v = nullptr;
+        if ((v = get("closed")) != nullptr) { cfg.closed_loop = atoi(v) != 0; changed = true; }
+        if ((v = get("kp")) != nullptr) { cfg.kp = static_cast<float>(atof(v)); changed = true; }
+        if ((v = get("ki")) != nullptr) { cfg.ki = static_cast<float>(atof(v)); changed = true; }
+        if ((v = get("kd")) != nullptr) { cfg.kd = static_cast<float>(atof(v)); changed = true; }
+        if ((v = get("gear")) != nullptr) { cfg.gear_ratio = static_cast<float>(atof(v)); changed = true; }
+        if ((v = get("noload")) != nullptr) { cfg.no_load_rpm = static_cast<float>(atof(v)); changed = true; }
+        if ((v = get("trim_a")) != nullptr) { cfg.trim_a = static_cast<float>(atof(v)); changed = true; }
+        if ((v = get("trim_b")) != nullptr) { cfg.trim_b = static_cast<float>(atof(v)); changed = true; }
+        int save = 0;
+        if ((v = get("save")) != nullptr) {
+            save = atoi(v);
+        }
+        if (changed) {
+            s_tune_set(cfg, save != 0);
+            cfg = s_tune_get();
+        }
+    }
+    char body[288];
+    int n = snprintf(body, sizeof(body),
+                     "{\"closed\":%d,\"kp\":%.2f,\"ki\":%.2f,\"kd\":%.3f,\"gear\":%.1f,"
+                     "\"noload\":%.0f,\"trim_a\":%.3f,\"trim_b\":%.3f}",
+                     cfg.closed_loop ? 1 : 0, (double)cfg.kp, (double)cfg.ki, (double)cfg.kd,
+                     (double)cfg.gear_ratio, (double)cfg.no_load_rpm,
+                     (double)cfg.trim_a, (double)cfg.trim_b);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, body, n);
 }
@@ -442,6 +492,10 @@ void WaiterTask(void* arg) {
                                       .method = HTTP_GET,
                                       .handler = OnMotorStatus,
                                       .user_ctx = nullptr};
+    const httpd_uri_t motor_tune = {.uri = "/api/motor/tune",
+                                    .method = HTTP_GET,
+                                    .handler = OnMotorTune,
+                                    .user_ctx = nullptr};
     const httpd_uri_t favicon = {.uri = "/favicon.ico",
                                  .method = HTTP_GET,
                                  .handler = OnFavicon,
@@ -456,11 +510,13 @@ void WaiterTask(void* arg) {
     esp_err_t r8 = httpd_register_uri_handler(hd, &motor);
     esp_err_t r9 = httpd_register_uri_handler(hd, &motor_ctrl);
     esp_err_t r10 = httpd_register_uri_handler(hd, &motor_status);
-    ESP_LOGI(TAG, "Route register: /lidar=%s /ws/lidar=%s /favicon.ico=%s /api/lidar_status=%s+%s /api/lidar_points=%s+%s /motor=%s /api/motor=%s+%s",
+    esp_err_t r11 = httpd_register_uri_handler(hd, &motor_tune);
+    ESP_LOGI(TAG, "Route register: /lidar=%s /ws/lidar=%s /favicon.ico=%s /api/lidar_status=%s+%s /api/lidar_points=%s+%s /motor=%s /api/motor=%s+%s /api/motor/tune=%s",
              esp_err_to_name(r1), esp_err_to_name(r2), esp_err_to_name(r3),
              esp_err_to_name(r4), esp_err_to_name(r5),
              esp_err_to_name(r6), esp_err_to_name(r7),
-             esp_err_to_name(r8), esp_err_to_name(r9), esp_err_to_name(r10));
+             esp_err_to_name(r8), esp_err_to_name(r9), esp_err_to_name(r10),
+             esp_err_to_name(r11));
     if (r1 != ESP_OK || r2 != ESP_OK) {
         ESP_LOGE(TAG, "Lidar route registration failed, web disabled");
         vTaskDelete(nullptr);
@@ -580,6 +636,11 @@ void ld14_web_set_motor_sinks(Ld14MotorCmdSink cmd, Ld14MotorTelSink tel) {
 void ld14_web_set_trim_sinks(Ld14TrimSetSink set_sink, Ld14TrimGetSink get_sink) {
     s_trim_set = std::move(set_sink);
     s_trim_get = std::move(get_sink);
+}
+
+void ld14_web_set_tune_sinks(Ld14TuneGetSink get_sink, Ld14TuneSetSink set_sink) {
+    s_tune_get = std::move(get_sink);
+    s_tune_set = std::move(set_sink);
 }
 
 void ld14_web_init(void) {

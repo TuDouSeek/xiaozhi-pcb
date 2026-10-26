@@ -8,8 +8,19 @@
 
   var LS_IP = 'fwq_broker_ip';
   var LS_PORT = 'fwq_broker_port';
+  var LS_TRIM = 'fwq_bal_r';
   var DEF_IP = '103.231.59.46';
   var DEF_PORT = '8083';
+
+  // 直行配平：右轮速度系数（0.8~1.2）。两轮同占空比转速天然不同，
+  // 前端按比例缩放右轮指令即可拉直，不需要重烧固件。
+  var balR = 1;
+  try {
+    var savedBal = parseFloat(localStorage.getItem(LS_TRIM));
+    if (savedBal > 0.8 && savedBal < 1.2) balR = savedBal;
+  } catch (e) { /* 隐私模式下 localStorage 不可用，忽略 */ }
+  var calib = null; // 自动标定采样：{ t0, samples:[[t, rpm_l, rpm_r], ...] }
+  var fwClosed = false; // 固件闭环状态（遥测 closed 字段）；闭环时前端配平必须停用
 
   var client = null;
   var connected = false;
@@ -21,6 +32,14 @@
   var beatAt = 0;
 
   var $ = function (id) { return document.getElementById(id); };
+
+  // 右轮按配平系数缩放：即时下发与 200ms 心跳都走同一套意图值，保证一致。
+  // 固件闭环（PID）开启后由芯片自己拉平，这里必须直通，否则等于给右轮降目标。
+  function balRight(r) {
+    if (fwClosed) return r;
+    var v = Math.round(r * balR);
+    return v < -100 ? -100 : (v > 100 ? 100 : v);
+  }
 
   // ---------- 连接管理 ----------
   function setConn(state, text) {
@@ -53,6 +72,14 @@
         $('rpmB').textContent = j.rpm_r;
         $('cntB').textContent = j.cnt_r;
         beatAt = Date.now();
+        if (typeof j.closed === 'number') {
+          var wasClosed = fwClosed;
+          fwClosed = j.closed === 1;
+          if (fwClosed !== wasClosed) syncBalMode();
+        }
+        if (calib && typeof j.rpm_l === 'number' && typeof j.rpm_r === 'number') {
+          calib.samples.push([beatAt, j.rpm_l, j.rpm_r]);
+        }
         $('beatText').textContent = '心跳正常 · ' + new Date(beatAt).toLocaleTimeString();
       } catch (e) { /* 坏帧丢弃 */ }
     });
@@ -80,10 +107,10 @@
   function drive(act) {
     var s = cruise;
     var m = { action: act, speed_l: 0, speed_r: 0 };
-    if (act === 'forward') { m.speed_l = s; m.speed_r = s; }
-    else if (act === 'backward') { m.speed_l = -s; m.speed_r = -s; }
-    else if (act === 'left') { m.speed_l = -s; m.speed_r = s; }
-    else if (act === 'right') { m.speed_l = s; m.speed_r = -s; }
+    if (act === 'forward') { m.speed_l = s; m.speed_r = balRight(s); }
+    else if (act === 'backward') { m.speed_l = -s; m.speed_r = balRight(-s); }
+    else if (act === 'left') { m.speed_l = -s; m.speed_r = balRight(s); }
+    else if (act === 'right') { m.speed_l = s; m.speed_r = balRight(-s); }
     intent = m;
     pub(m); // 按下即时下发，不等心跳
   }
@@ -104,6 +131,7 @@
     var l = Math.round(joyY * cruise + joyX * cruise);
     var r = Math.round(joyY * cruise - joyX * cruise);
     l = Math.max(-100, Math.min(100, l)); r = Math.max(-100, Math.min(100, r));
+    r = balRight(r);
     intent = { action: joyAction(l, r), speed_l: l, speed_r: r };
     pub(intent);
     var jl = document.getElementById('joyL'), jr = document.getElementById('joyR');
@@ -162,15 +190,32 @@
     cruise = +$('spd').value;
     $('spdVal').textContent = cruise;
   });
+  var activeTrackSlider = null;
   function bindMotor(sliderId, valId, motor) {
-    $(sliderId).addEventListener('input', function () {
-      var v = +$(sliderId).value;
+    var slider = $(sliderId);
+    slider.addEventListener('input', function () {
+      var v = +slider.value;
       $(valId).textContent = v;
       if (motor === 'A') man.l = v; else man.r = v;
       intent = { action: 'manual', speed_l: man.l, speed_r: man.r };
       pub(intent);
     });
+    slider.addEventListener('pointerdown', function () {
+      activeTrackSlider = { slider: slider, valId: valId, motor: motor };
+    });
   }
+  function releaseTrackSlider() {
+    if (!activeTrackSlider) return;
+    var track = activeTrackSlider;
+    activeTrackSlider = null;
+    track.slider.value = 0;
+    $(track.valId).textContent = '0';
+    if (track.motor === 'A') man.l = 0; else man.r = 0;
+    intent = { action: 'manual', speed_l: man.l, speed_r: man.r };
+    pub(intent);
+  }
+  window.addEventListener('pointerup', releaseTrackSlider);
+  window.addEventListener('pointercancel', releaseTrackSlider);
   bindMotor('sA', 'vA', 'A');
   bindMotor('sB', 'vB', 'B');
   document.querySelectorAll('[data-ma]').forEach(function (b) {
@@ -189,6 +234,72 @@
       intent = { action: 'manual', speed_l: man.l, speed_r: man.r };
       pub(intent);
     });
+  });
+
+  // ---------- 直行配平（右轮系数 + 遥测自动标定） ----------
+  function balHint(text) {
+    var el = $('balHint');
+    if (el) el.textContent = text;
+  }
+  function setBal(v, persist) {
+    if (!(v > 0.8)) v = 0.8;
+    if (v > 1.2) v = 1.2;
+    balR = v;
+    if (persist) {
+      try { localStorage.setItem(LS_TRIM, String(v)); } catch (e) { /* 忽略 */ }
+    }
+    var pct = Math.round(v * 100);
+    $('balVal').textContent = pct;
+    $('bal').value = pct;
+  }
+  setBal(balR, false);
+  // 固件闭环开启时前端配平无意义且会互相打架：禁用控件并说明原因。
+  function syncBalMode() {
+    var slider = $('bal');
+    if (!slider) return;
+    slider.disabled = fwClosed;
+    var auto = $('balAuto');
+    if (auto) auto.disabled = fwClosed;
+    balHint(fwClosed ? '固件闭环已开启：PID 自动拉平两轮，前端配平停用'
+                     : '固件为开环：用右轮系数补偿两轮差异');
+  }
+  $('bal').addEventListener('input', function () {
+    setBal(+$('bal').value / 100, true);
+    balHint('右轮系数 ' + $('bal').value + '%（已存本机，下次打开自动生效）');
+  });
+  $('balReset').addEventListener('click', function () {
+    setBal(1, true);
+    balHint('已复位为 100%（左右等速下发）');
+  });
+  $('balAuto').addEventListener('click', function () {
+    if (!connected) { balHint('请先点「连接」'); return; }
+    if (calib) return;
+    var v = cruise > 0 ? cruise : 60;
+    calib = { t0: Date.now(), samples: [] };
+    // 标定必须用原始等速，绕过配平系数，否则测的还是修正后的值。
+    intent = { action: 'forward', speed_l: v, speed_r: v };
+    pub(intent);
+    balHint('标定中：以 ' + v + '% 直行 2.5s，请勿触碰车辆…');
+    setTimeout(function () {
+      var c = calib;
+      calib = null;
+      intent = { action: 'stop', speed_l: 0, speed_r: 0 };
+      pub(intent);
+      if (!c) return;
+      var cut = c.t0 + 1000; // 丢掉起步加速段，只统计匀速区
+      var sl = 0, sr = 0, n = 0;
+      for (var i = 0; i < c.samples.length; i++) {
+        var t = c.samples[i][0], l = c.samples[i][1], r = c.samples[i][2];
+        if (t < cut || Math.abs(l) < 1 || Math.abs(r) < 1) continue;
+        sl += l; sr += r; n++;
+      }
+      if (n < 3) { balHint('采样不足：确认车辆在转、MQTT 在线后重试'); return; }
+      var ml = sl / n, mr = sr / n;
+      if (ml * mr <= 0) { balHint('两轮转向相反，先检查电机接线/极性'); return; }
+      setBal(Math.abs(ml / mr), true);
+      balHint('标定完成：左 ' + ml.toFixed(1) + ' / 右 ' + mr.toFixed(1) +
+              ' RPM → 右轮系数 ' + Math.round(balR * 100) + '%');
+    }, 2500);
   });
 
   // ---------- 激光雷达点云（WS :8889 JSON + rAF 荧光余晖） ----------
