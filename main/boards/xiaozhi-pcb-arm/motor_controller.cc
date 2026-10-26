@@ -33,6 +33,8 @@ bool IsValidPin(gpio_num_t pin) {
 MotorController::MotorController(const Config& config) : config_(config) {
     dir_sign_[0] = config_.invert_a ? -1 : 1;
     dir_sign_[1] = config_.invert_b ? -1 : 1;
+    trim_[0] = config_.trim_a > 0.2f ? (config_.trim_a > 2.0f ? 2.0f : config_.trim_a) : 0.2f;
+    trim_[1] = config_.trim_b > 0.2f ? (config_.trim_b > 2.0f ? 2.0f : config_.trim_b) : 0.2f;
     if (IsValidPin(config_.stby)) {
         gpio_config_t io_conf = {
             .pin_bit_mask = 1ULL << config_.stby,
@@ -191,8 +193,31 @@ void MotorController::SetSpeed(int left_percent, int right_percent) {
         target_rpm_[1].store(right_percent * no_load_rpm_ / 100.0f);
         return;
     }
-    ApplyChannel(0, left_percent);
-    ApplyChannel(1, right_percent);
+    ApplyChannel(0, TrimPercent(0, left_percent));
+    ApplyChannel(1, TrimPercent(1, right_percent));
+}
+
+void MotorController::SetTrim(int index, float trim) {
+    if (index != 0 && index != 1) {
+        return;
+    }
+    if (!(trim > 0.2f)) {
+        trim = 0.2f;
+    } else if (trim > 2.0f) {
+        trim = 2.0f;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    trim_[index] = trim;
+}
+
+float MotorController::GetTrim(int index) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return (index == 0 || index == 1) ? trim_[index] : 1.0f;
+}
+
+int MotorController::TrimPercent(int index, int percent) const {
+    int v = static_cast<int>(lroundf(percent * trim_[index]));
+    return v < -100 ? -100 : (v > 100 ? 100 : v);
 }
 
 void MotorController::Stop() {
@@ -236,7 +261,7 @@ void MotorController::SetChannelSpeed(int index, int percent) {
         return;
     }
     current_percent_[index] = percent;
-    ApplyChannel(index, percent);
+    ApplyChannel(index, TrimPercent(index, percent));
 }
 
 int32_t MotorController::GetLeftCount() const {

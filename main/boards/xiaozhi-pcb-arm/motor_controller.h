@@ -36,6 +36,11 @@ public:
         // 同时反转驱动方向与编码器符号，rpm/cnt/闭环全部自洽，无需改线。
         bool invert_a = false;
         bool invert_b = false;
+        // 直行配平：两轮摩擦/电机个体差异会让同一占空比转速不同。
+        // trim 只缩放该轮的 PWM 占空比（开环有效，闭环由 PID 自行收敛），
+        // 1.0 表示不修正，允许范围 0.2~2.0。
+        float trim_a = 1.0f;
+        float trim_b = 1.0f;
     };
 
     explicit MotorController(const Config& config);
@@ -54,6 +59,10 @@ public:
     int32_t GetLeftCount() const;
     int32_t GetRightCount() const;
     void ClearCounts();
+
+    // 直行配平（开环）：index 0=A(左) / 1=B(右)，trim 缩放该轮占空比。
+    void SetTrim(int index, float trim);
+    float GetTrim(int index) const;
 
     bool IsMotorsReady() const { return motors_ready_; }
     bool IsEncodersReady() const { return encoders_ready_; }
@@ -89,6 +98,8 @@ private:
     void InitPwm();
     bool InitEncoder(gpio_num_t pin_a, gpio_num_t pin_b, EncoderUnit& unit);
     void ApplyChannel(int index, int percent);
+    // 开环占空比按 trim 缩放后再下发，并夹到 ±100。
+    int TrimPercent(int index, int percent) const;
     float CountsPerRev() const;
     static void SpeedTask(void* arg);
 
@@ -98,6 +109,7 @@ private:
     EncoderUnit encoder_a_;
     EncoderUnit encoder_b_;
     int current_percent_[2] = {0, 0};
+    float trim_[2] = {1.0f, 1.0f};  // 直行配平系数（开环缩放占空比）
     int dir_sign_[2] = {1, 1};  // 相位符号：invert 的轮为 -1，驱动与编码器同反
     // HTTP/WS/测速多任务并发调用 SetSpeed/Brake/UpdateSpeed 时的互斥保护。
     // LEDC/PCNT 寄存器操作本身短小，此锁只保 current_percent_/PID 状态一致性。

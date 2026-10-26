@@ -4,7 +4,9 @@
     "builds": [
         {
             "name": "xiaozhi-pcb-arm",
-            "sdkconfig_append": []
+            "sdkconfig_append": [
+                "CONFIG_HTTPD_WS_SUPPORT=y"
+            ]
         }
     ]
 }

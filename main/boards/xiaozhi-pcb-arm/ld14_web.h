@@ -27,4 +27,10 @@ using Ld14MotorCmdSink = std::function<void(char motor, int dir, int speed)>;
 using Ld14MotorTelSink = std::function<bool(char motor, float& rpm, int32_t& cnt)>;
 void ld14_web_set_motor_sinks(Ld14MotorCmdSink cmd, Ld14MotorTelSink tel);
 
+// 直行配平接入：index 0=A(左) / 1=B(右)，trim 为开环占空比缩放系数
+// （0.2~2.0，1.0 不修正）。用于抵消两轮机械差异导致的同占空比转速不同。
+using Ld14TrimSetSink = std::function<void(int index, float trim)>;
+using Ld14TrimGetSink = std::function<float(int index)>;
+void ld14_web_set_trim_sinks(Ld14TrimSetSink set_sink, Ld14TrimGetSink get_sink);
+
 #endif  // __LD14_WEB_H__

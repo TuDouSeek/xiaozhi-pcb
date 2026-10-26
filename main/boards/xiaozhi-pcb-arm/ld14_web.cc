@@ -209,6 +209,8 @@ static void SetCors(httpd_req_t* req) {
 // MotorController 内部持 mutex，本层只做轻量查询解析，无共享可变状态之外的竞态。
 Ld14MotorCmdSink s_motor_cmd;
 Ld14MotorTelSink s_motor_tel;
+Ld14TrimSetSink s_trim_set;
+Ld14TrimGetSink s_trim_get;
 int s_motor_dir[2] = {0, 0};    // 0=stop 1=forward 2=backward 3=brake
 int s_motor_speed[2] = {0, 0};  // 占空比 0~100
 
@@ -229,12 +231,14 @@ esp_err_t OnMotorControl(httpd_req_t* req) {
     char motor[8] = {};
     char dir[16] = {};
     char speed[8] = {};
+    char trim[16] = {};
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "missing query");
     }
     httpd_query_key_value(query, "motor", motor, sizeof(motor));
     httpd_query_key_value(query, "dir", dir, sizeof(dir));
     httpd_query_key_value(query, "speed", speed, sizeof(speed));
+    httpd_query_key_value(query, "trim", trim, sizeof(trim));
 
     int d = 0;  // 0=stop 1=forward 2=backward 3=brake
     if (strcmp(dir, "forward") == 0) {
@@ -276,9 +280,26 @@ esp_err_t OnMotorControl(httpd_req_t* req) {
         s_motor_dir[idx] = d;
         s_motor_speed[idx] = sp;
     }
-    char body[96];
+    // trim=0.2~2.0：只缩放该轮占空比，用于直行配平标定（开环有效）。
+    if (trim[0] != '\0' && s_trim_set) {
+        float t = static_cast<float>(atof(trim));
+        if (m == 'X') {
+            s_trim_set(0, t);
+            s_trim_set(1, t);
+        } else {
+            int idx = MotorIndex(m);
+            if (idx >= 0) {
+                s_trim_set(idx, t);
+            }
+        }
+    }
+    float trim_a = s_trim_get ? s_trim_get(0) : 1.0f;
+    float trim_b = s_trim_get ? s_trim_get(1) : 1.0f;
+    char body[128];
     int n = snprintf(body, sizeof(body),
-                     "{\"ok\":true,\"motor\":\"%c\",\"dir\":%d,\"speed\":%d}", m, d, sp);
+                     "{\"ok\":true,\"motor\":\"%c\",\"dir\":%d,\"speed\":%d,"
+                     "\"trim_a\":%.3f,\"trim_b\":%.3f}",
+                     m, d, sp, (double)trim_a, (double)trim_b);
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, body, n);
 }
@@ -292,12 +313,14 @@ esp_err_t OnMotorStatus(httpd_req_t* req) {
         s_motor_tel('A', rpm_a, cnt_a);
         s_motor_tel('B', rpm_b, cnt_b);
     }
-    char body[192];
+    char body[224];
     int n = snprintf(body, sizeof(body),
-                     "{\"a\":{\"dir\":%d,\"speed\":%d,\"rpm\":%.1f,\"cnt\":%ld},"
-                     "\"b\":{\"dir\":%d,\"speed\":%d,\"rpm\":%.1f,\"cnt\":%ld}}",
+                     "{\"a\":{\"dir\":%d,\"speed\":%d,\"rpm\":%.1f,\"cnt\":%ld,\"trim\":%.3f},"
+                     "\"b\":{\"dir\":%d,\"speed\":%d,\"rpm\":%.1f,\"cnt\":%ld,\"trim\":%.3f}}",
                      s_motor_dir[0], s_motor_speed[0], (double)rpm_a, (long)cnt_a,
-                     s_motor_dir[1], s_motor_speed[1], (double)rpm_b, (long)cnt_b);
+                     (double)(s_trim_get ? s_trim_get(0) : 1.0f),
+                     s_motor_dir[1], s_motor_speed[1], (double)rpm_b, (long)cnt_b,
+                     (double)(s_trim_get ? s_trim_get(1) : 1.0f));
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, body, n);
 }
@@ -552,6 +575,11 @@ void ld14_web_set_motion_sink(Ld14DriveSink drive, Ld14BrakeSink brake) {
 void ld14_web_set_motor_sinks(Ld14MotorCmdSink cmd, Ld14MotorTelSink tel) {
     s_motor_cmd = std::move(cmd);
     s_motor_tel = std::move(tel);
+}
+
+void ld14_web_set_trim_sinks(Ld14TrimSetSink set_sink, Ld14TrimGetSink get_sink) {
+    s_trim_set = std::move(set_sink);
+    s_trim_get = std::move(get_sink);
 }
 
 void ld14_web_init(void) {

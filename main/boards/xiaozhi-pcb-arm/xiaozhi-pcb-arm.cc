@@ -229,6 +229,10 @@ private:
         // 而"右转"指令反而双轮同向直行。这里翻转 B 路相位，驱动方向与编码器
         // 符号一起取反，rpm/cnt/闭环 PID 仍自洽，不需要拆电机线。
         cfg.invert_b = true;
+        // 直行配平：标定出两轮差异后把系数写死在这里（1.0 = 不修正），
+        // 否则每次重启都会回到 1.0，需要重新用 /api/motor/control?trim= 调。
+        // cfg.trim_a = 1.00f;
+        // cfg.trim_b = 1.00f;
         motors_ = std::make_unique<MotorController>(cfg);
         // 后台测速 20ms（Core 1）：刷新 RPM + 2s 一次遥测日志；
         // 默认开环，闭环需显式 EnableClosedLoop(true)。
@@ -331,6 +335,11 @@ public:
             // 电机云端 MQTT 桥：robot/cmd 下发 + robot/telemetry 200ms 遥测。
             // 与本地 HTTP/WS 遥控互斥，云端联调时不要再用摇杆/测试台页面。
             motor_mqtt_init(motors);
+            // 直行配平：/api/motor/control?trim=... 运行时调整（开环占空比缩放），
+            // 用于消除两轮机械差异导致的跑偏，不需要重新烧录。
+            ld14_web_set_trim_sinks(
+                [motors](int idx, float trim) { motors->SetTrim(idx, trim); },
+                [motors](int idx) { return motors->GetTrim(idx); });
             ld14_web_set_motor_sinks(
                 [motors](char m, int dir, int speed) {
                     int signed_sp = (dir == 2) ? -speed : (dir == 1 ? speed : 0);
