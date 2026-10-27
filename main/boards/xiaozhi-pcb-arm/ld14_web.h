@@ -33,4 +33,20 @@ using Ld14TrimSetSink = std::function<void(int index, float trim)>;
 using Ld14TrimGetSink = std::function<float(int index)>;
 void ld14_web_set_trim_sinks(Ld14TrimSetSink set_sink, Ld14TrimGetSink get_sink);
 
+// 固件调参接入：闭环开关、PID 增益、减速比、空载满速、两轮 trim。
+// 通过 GET /api/motor/tune 读写，save=1 时写入 NVS，重启后自动恢复。
+struct Ld14TuneConfig {
+    bool closed_loop = false;
+    float kp = 1.2f;
+    float ki = 3.0f;
+    float kd = 0.02f;
+    float gear_ratio = 30.0f;
+    float no_load_rpm = 200.0f;
+    float trim_a = 1.0f;
+    float trim_b = 1.0f;
+};
+using Ld14TuneGetSink = std::function<Ld14TuneConfig()>;
+using Ld14TuneSetSink = std::function<void(const Ld14TuneConfig&, bool save)>;
+void ld14_web_set_tune_sinks(Ld14TuneGetSink get_sink, Ld14TuneSetSink set_sink);
+
 #endif  // __LD14_WEB_H__

@@ -51,6 +51,37 @@ void HandleCmd(const char* data, int len) {
         ESP_LOGW(TAG, "cmd JSON 解析失败");
         return;
     }
+    // 调参指令：{"tune":{"closed":1,"trim_r":0.91,"kp":1.2,...},"save":1}
+    // 覆盖闭环开关/PID/减速比/空载满速/两轮 trim；save=1 写 NVS。
+    const cJSON* tune = cJSON_GetObjectItem(root, "tune");
+    if (cJSON_IsObject(tune) && s_motors != nullptr) {
+        auto t = s_motors->GetTuning();
+        auto num = [&tune](const char* key, float& out) {
+            const cJSON* item = cJSON_GetObjectItem(tune, key);
+            if (cJSON_IsNumber(item)) {
+                out = static_cast<float>(item->valuedouble);
+            }
+        };
+        const cJSON* closed = cJSON_GetObjectItem(tune, "closed");
+        if (cJSON_IsBool(closed) || cJSON_IsNumber(closed)) {
+            t.closed_loop = cJSON_IsTrue(closed) ||
+                            (cJSON_IsNumber(closed) && closed->valueint != 0);
+        }
+        num("kp", t.kp);
+        num("ki", t.ki);
+        num("kd", t.kd);
+        num("gear", t.gear_ratio);
+        num("noload", t.no_load_rpm);
+        num("trim_l", t.trim_a);
+        num("trim_r", t.trim_b);
+        const cJSON* save = cJSON_GetObjectItem(root, "save");
+        const bool persist = cJSON_IsTrue(save) ||
+                             (cJSON_IsNumber(save) && save->valueint != 0);
+        s_motors->ApplyTuning(t, persist);
+        s_last_cmd_ms = NowMs();
+        cJSON_Delete(root);
+        return;
+    }
     const cJSON* action = cJSON_GetObjectItem(root, "action");
     if (cJSON_IsString(action)) {
         const char* a = action->valuestring;
@@ -104,7 +135,7 @@ void HandleCmd(const char* data, int len) {
 
 void TelemetryTask(void* arg) {
     (void)arg;
-    char body[96];
+    char body[224];
     while (s_client != nullptr) {
         vTaskDelay(pdMS_TO_TICKS(s_cfg.telemetry_period_ms));
         if (s_client == nullptr) {
@@ -130,9 +161,14 @@ void TelemetryTask(void* arg) {
         float rpm_r = s_motors->GetRightRpm();
         int32_t cnt_l = s_motors->GetLeftCount();
         int32_t cnt_r = s_motors->GetRightCount();
+        // 附带闭环状态与目标转速，方便前端看跟踪误差（cmd 与遥测同为 QoS0）。
+        const bool closed = s_motors->IsClosedLoop();
         int n = snprintf(body, sizeof(body),
-                         "{\"rpm_l\":%.1f,\"rpm_r\":%.1f,\"cnt_l\":%ld,\"cnt_r\":%ld}",
-                         rpm_l, rpm_r, (long)cnt_l, (long)cnt_r);
+                         "{\"rpm_l\":%.1f,\"rpm_r\":%.1f,\"cnt_l\":%ld,\"cnt_r\":%ld,"
+                         "\"tgt_l\":%.1f,\"tgt_r\":%.1f,\"closed\":%d}",
+                         rpm_l, rpm_r, (long)cnt_l, (long)cnt_r,
+                         (double)s_motors->GetTargetRpm(0), (double)s_motors->GetTargetRpm(1),
+                         closed ? 1 : 0);
         esp_mqtt_client_publish(s_client, s_cfg.topic_telemetry, body, n, 0, 0);
     }
     s_tel_task = nullptr;

@@ -340,6 +340,34 @@ public:
             ld14_web_set_trim_sinks(
                 [motors](int idx, float trim) { motors->SetTrim(idx, trim); },
                 [motors](int idx) { return motors->GetTrim(idx); });
+            // 固件调参（/api/motor/tune）：闭环开关、PID、减速比、空载满速、trim，
+            // save=1 写 NVS，重启后仍生效。
+            ld14_web_set_tune_sinks(
+                [motors]() {
+                    auto t = motors->GetTuning();
+                    Ld14TuneConfig c;
+                    c.closed_loop = t.closed_loop;
+                    c.kp = t.kp;
+                    c.ki = t.ki;
+                    c.kd = t.kd;
+                    c.gear_ratio = t.gear_ratio;
+                    c.no_load_rpm = t.no_load_rpm;
+                    c.trim_a = t.trim_a;
+                    c.trim_b = t.trim_b;
+                    return c;
+                },
+                [motors](const Ld14TuneConfig& c, bool save) {
+                    MotorController::Tuning t;
+                    t.closed_loop = c.closed_loop;
+                    t.kp = c.kp;
+                    t.ki = c.ki;
+                    t.kd = c.kd;
+                    t.gear_ratio = c.gear_ratio;
+                    t.no_load_rpm = c.no_load_rpm;
+                    t.trim_a = c.trim_a;
+                    t.trim_b = c.trim_b;
+                    motors->ApplyTuning(t, save);
+                });
             ld14_web_set_motor_sinks(
                 [motors](char m, int dir, int speed) {
                     int signed_sp = (dir == 2) ? -speed : (dir == 1 ? speed : 0);

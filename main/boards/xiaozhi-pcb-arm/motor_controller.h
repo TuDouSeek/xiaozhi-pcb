@@ -89,6 +89,26 @@ public:
     void SetPidGains(float kp, float ki, float kd);
     void SetNoLoadRpm(float rpm);  // percent→RPM 映射满量程，默认 200
 
+    // ---- 调参快照与持久化（NVS 命名空间 "motor"） ----
+    // 闭环开关、PID 增益、减速比、空载满速、两轮 trim 一起存，
+    // 断电重启后自动恢复，避免每次上电都要重新标定。
+    struct Tuning {
+        bool closed_loop = false;
+        float kp = 1.2f;
+        float ki = 3.0f;
+        float kd = 0.02f;
+        float gear_ratio = 30.0f;
+        float no_load_rpm = 200.0f;
+        float trim_a = 1.0f;
+        float trim_b = 1.0f;
+    };
+    Tuning GetTuning() const;
+    // 应用一套调参；save=true 时同时写回 NVS（下次上电自动加载）。
+    void ApplyTuning(const Tuning& tuning, bool save);
+    // 闭环目标转速（开环恒为 0）与实测转速，供遥测对比跟踪效果。
+    float GetTargetRpm(int index) const;
+    float GetRpm(int index) const;
+
 private:
     struct EncoderUnit {
         pcnt_unit_handle_t unit = nullptr;
@@ -100,6 +120,8 @@ private:
     void ApplyChannel(int index, int percent);
     // 开环占空比按 trim 缩放后再下发，并夹到 ±100。
     int TrimPercent(int index, int percent) const;
+    void LoadTuning();
+    void SaveTuning(const Tuning& tuning) const;
     float CountsPerRev() const;
     static void SpeedTask(void* arg);
 
@@ -121,10 +143,13 @@ private:
     int last_count_[2] = {0, 0};
     float kp_ = 1.2f, ki_ = 3.0f, kd_ = 0.02f;  // 起步值，按实车整定
     float integ_[2] = {0.0f, 0.0f};
+    bool pid_inhibit_ = false;  // Brake/Stop 置位，SetSpeed 清除
     float prev_err_[2] = {0.0f, 0.0f};
     float no_load_rpm_ = 200.0f;  // percent→RPM 满量程，按空载实测校准
     std::atomic<float> target_rpm_[2] = {0.0f, 0.0f};
     std::atomic<bool> closed_loop_ = false;
+    // 刹车/停止时置位：PID 暂停输出，直到下一次 SetSpeed，避免闭环把车
+    // 重新加速（急停后又窜出去）。
     bool speed_task_started_ = false;
     uint32_t speed_period_ms_ = 20;
 };
