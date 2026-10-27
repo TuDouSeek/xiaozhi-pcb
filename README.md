@@ -1,122 +1,202 @@
-# An MCP-based Chatbot
+# 小智 AI 履带机器人 · xiaozhi-pcb-arm
 
-## 介绍
+基于 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 的定制分支，把语音助手落到一台**带雷达的履带底盘**上：ESP32-S3 主控、LD14 激光雷达、双电机编码器闭环、本地网页点云与云端 MQTT 遥控。
 
-👉 [人类：给 AI 装摄像头 vs AI：当场发现主人三天没洗头【bilibili】](https://www.bilibili.com/video/BV1bpjgzKEhd/)
+上游的语音链路（唤醒词、ASR/LLM/TTS、MCP）保持不动，本仓库的改动集中在板级驱动、运动控制和调试工具链。
 
-👉 [手工打造你的 AI 女友，新手入门教程【bilibili】](https://www.bilibili.com/video/BV1XnmFYLEJN/)
+## 功能一览
 
-小智 AI 聊天机器人作为一个语音交互入口，利用 Qwen / DeepSeek 等大模型的 AI 能力，通过 MCP 协议实现多端控制。
+| 模块 | 能力 |
+| --- | --- |
+| 语音交互 | 唤醒词 `nihaoxiaozhi`，接入 xiaozhi.me 官方服务；MCP 工具可被模型直接调用（前进/后退/转向/停止/刹车/雷达状态/眼睛表情） |
+| 激光雷达 | LD14 走 UART2（RX=39），PWM 调速（40）；设备侧 HTTP + WebSocket 推点云，同时 UDP 广播给本地桥接 |
+| 电机控制 | 2× AT8870 + 正交编码器；开环占空比 / 直行 trim / 速度闭环 PID 三种模式，参数存 NVS |
+| 本地调试 | 设备自带网页：`/motor` 电机测试台、`/lidar` 雷达点云、`/api/motor/tune` 调参接口 |
+| 云端遥控 | MQTT `robot/cmd` 下发、`robot/telemetry` 200ms 遥测，2s 无指令自动刹车 |
+| Web 控制台 | `fwq/` 静态前端：摇杆、履带滑块、双轮配平（含遥测自动标定）、速度曲线、雷达 3D 视图 |
+| 显示 | SSD1306 OLED 机器人 UI（信号/时间/电池/语音柱）+ 双 GC9A01 圆屏眼睛表情 |
+| 网络 | Wi-Fi 为主；ML307 4G 硬件已预留（当前变体未启用） |
 
-## 近期更新
+## 硬件与引脚
 
-- 项目主线现已迁移到 ESP-IDF v6.0 或以上版本，首选稳定版为 v6.0.2；此前的 157 个发布变体已在 ESP-IDF v6.0.1 上通过构建验证。当前矩阵包含 171 个变体，其中 170 个支持 IDF 6.0.x，ESP32-S31 变体需要 IDF 6.1 或以上版本。
-- MQTT 和 BluFi 加密已迁移到 PSA Crypto，同时完成了 IDF 6 组件拆分及第三方依赖兼容处理。
-- 加固了音频流水线并发、MQTT/UDP 数据包校验和发布矩阵选择逻辑。
-- ESP-IDF v5.5 仅保留用于文档明确标注的旧版板卡；使用 ESP-SR 2.4.7 时，ESP32-P4 Rev1 和 Rev3 均支持 IDF 6。完整兼容性和板卡验证状态请参阅 [ESP-IDF 6.0 迁移文档](docs/esp-idf-6-migration.md)。
+主控建议 **ESP32-S3-WROOM-1-N16R8**（16MB Flash + 8MB OPI PSRAM），PSRAM 为唤醒词所必需。
 
-### 已实现功能
+| 外设 | 信号 | GPIO |
+| --- | --- | --- |
+| 电机 A（AT8870 逻辑输入） | IN1 / IN2 | 17 / 18 |
+| 电机 B | IN1 / IN2 | 38 / 47 |
+| 编码器 A | A 相 / B 相 | 1 / 2 |
+| 编码器 B | A 相 / B 相 | 21 / 48 |
+| 激光雷达 | UART2 RX / PWM | 39 / 40 |
+| OLED（SSD1306） | SDA / SCL | 41 / 42 |
+| 双圆屏 GC9A01 | DC / RST / SCK / MOSI / CS-L / CS-R | 13 / 14 / 11 / 12 / 10 / 9 |
+| 麦克风 INMP441 | SD / WS / SCK | 4 / 5 / 6 |
+| 功放 MAX98357 | DIN / BCLK / LRC | 16 / 15 / 7 |
+| BOOT 按键 | — | 0 |
+| 4G 模组（预留） | TX / RX | 20 / 19 |
 
-- 支持 Wi-Fi、有线以太网、USB RNDIS，以及 ML307/EC801E 或 NT26 Cat.1 4G 网络；部分硬件支持 Wi-Fi 与 4G 切换
-- 基于 [ESP-SR](https://github.com/espressif/esp-sr) 的离线语音唤醒，支持自定义唤醒词
-- 支持两种通信传输方式：[WebSocket](docs/websocket_zh.md) 和 [MQTT + UDP](docs/mqtt-udp_zh.md)
-- 采用 Opus 音频流，既支持传统的流式 ASR + LLM + TTS 方案，也支持 Realtime 端到端语音模型；具备 AEC 的硬件可实现实时全双工交互
-- 声纹识别，识别当前说话人的身份 [3D Speaker](https://github.com/modelscope/3D-Speaker)
-- OLED / LCD 显示屏，支持表情和丰富的情绪呈现；部分硬件支持摄像头视觉输入
-- 电量显示与电源管理
-- 提供 38 种界面语言；语音提示优先使用本地化资源，缺失时自动回退到英文
-- 支持 ESP32、ESP32-C3、ESP32-C5、ESP32-C6、ESP32-S3、ESP32-P4 芯片平台
-- 支持热点和 BluFi 两种 Wi-Fi 配网方式
-- 通过设备端 MCP 实现设备控制（音量、灯光、电机、GPIO 等）
-- 通过云端 MCP 扩展大模型能力（智能家居控制、PC桌面操作、知识搜索、邮件收发等）
-- 自定义唤醒词、字体、表情与聊天背景，支持网页端在线修改 ([自定义Assets生成器](https://github.com/78/xiaozhi-assets-generator))
+> B 轮在固件里配置了 `invert_b = true`，接线按现板执行即可；改线后同步修改 `config.h` 与 `xiaozhi-pcb-arm.cc` 中的极性。
 
-## 硬件
+## 目录结构
 
-### 面包板手工制作实践
+```
+main/boards/xiaozhi-pcb-arm/   板级代码
+  motor_controller.*           电机驱动 + 编码器测速 + trim + PID 闭环 + NVS 调参
+  motor_mqtt.*                 robot/cmd、robot/telemetry 云桥与看门狗
+  ld14_driver.* / ld14_system.* 雷达驱动与数据流
+  ld14_web.*                   /motor、/lidar 页面和 /api/* 接口
+  eye_display.* / eye_emotions.h  双圆屏表情
+  robot_oled_display.*         机器人 UI
+  xiaozhi-pcb-arm.cc           板级装配、MCP 工具注册
+fwq/                           Web 控制台 + UDP→WS 雷达桥接（node server.js）
+algo/                          运动/导航/仿真骨架
+docs/                          协议与开发文档
+scripts/build.py               带板卡选择的构建脚本
+```
 
-详见飞书文档教程：
+## 编译与烧录
 
-👉 [《小智 AI 聊天机器人百科全书》](https://ccnphfhqs21z.feishu.cn/wiki/F5krwD16viZoF0kKkvDcrZNYnhb?from=from_copylink)
+环境：ESP-IDF **v6.1**（本仓库实测），上游建议 v6.0.2 及以上。`config.json` 会自动追加 `CONFIG_HTTPD_WS_SUPPORT=y`，雷达 WebSocket 依赖它。
 
-### 支持 138 个板卡目录、171 个固件发布变体（仅展示部分）
+```bash
+source ~/.espressif/tools/activate_idf_v6.1.sh        # Windows 换成 export.bat
+python scripts/build.py xiaozhi-pcb-arm
+```
 
-- <a href="https://oshwhub.com/li-chuang-kai-fa-ban/li-chuang-shi-zhan-pai-esp32-s3-kai-fa-ban" target="_blank" title="立创·实战派 ESP32-S3 开发板">立创·实战派 ESP32-S3 开发板</a>
-- <a href="https://github.com/espressif/esp-box" target="_blank" title="乐鑫 ESP32-S3-BOX-3">乐鑫 ESP32-S3-BOX-3</a>
-- <a href="https://docs.m5stack.com/zh_CN/core/CoreS3" target="_blank" title="M5Stack CoreS3">M5Stack CoreS3</a>
-- <a href="https://docs.m5stack.com/en/atom/Atomic%20Echo%20Base" target="_blank" title="AtomS3R + Echo Base">M5Stack AtomS3R + Echo Base</a>
-- <a href="https://gf.bilibili.com/item/detail/1108782064" target="_blank" title="神奇按钮 2.4">神奇按钮 2.4</a>
-- <a href="https://www.waveshare.net/shop/ESP32-S3-Touch-AMOLED-1.8.htm" target="_blank" title="微雪电子 ESP32-S3-Touch-AMOLED-1.8">微雪电子 ESP32-S3-Touch-AMOLED-1.8</a>
-- <a href="https://github.com/Xinyuan-LilyGO/T-Circle-S3" target="_blank" title="LILYGO T-Circle-S3">LILYGO T-Circle-S3</a>
-- <a href="https://oshwhub.com/tenclass01/xmini_c3" target="_blank" title="虾哥 Mini C3">虾哥 Mini C3</a>
-- <a href="https://oshwhub.com/movecall/cuican-ai-pendant-lights-up-y" target="_blank" title="Movecall CuiCan ESP32S3">璀璨·AI 吊坠</a>
-- <a href="https://github.com/WMnologo/xingzhi-ai" target="_blank" title="无名科技Nologo-星智-1.54">无名科技 Nologo-星智-1.54TFT</a>
-- <a href="https://www.seeedstudio.com/SenseCAP-Watcher-W1-A-p-5979.html" target="_blank" title="SenseCAP Watcher">SenseCAP Watcher</a>
-- <a href="https://www.bilibili.com/video/BV1BHJtz6E2S/" target="_blank" title="ESP-HI 超低成本机器狗">ESP-HI 超低成本机器狗</a>
+产物：
 
-## 软件
+- `build/merged-binary.bin` —— 合并固件，烧到 `0x0` 即可
+- `build/xiaozhi.bin` + bootloader + 分区表 —— 手动分地址烧录
 
-### 固件烧录
+```bash
+# 一键烧录（推荐）
+python -m esptool --chip esp32s3 -p /dev/cu.usbmodem21401 -b 460800 \
+  --before default-reset --after hard-reset write-flash 0x0 build/merged-binary.bin
 
-新手第一次操作建议先不要搭建开发环境，直接使用免开发环境烧录的固件。
+# 开发迭代
+idf.py -p /dev/cu.usbmodem21401 flash monitor
+```
 
-固件默认接入 [xiaozhi.me](https://xiaozhi.me) 官方服务器，个人用户注册账号可以免费使用 Qwen 实时模型。
+首次上电进入热点配网 → 到 xiaozhi.me 用激活码绑定 → 说"你好小智"开始对话。
 
-👉 [新手烧录固件教程](https://ccnphfhqs21z.feishu.cn/wiki/Zpz4wXBtdimBrLk25WdcXzxcnNS)
+## 三种遥控方式
 
-### 开发环境
+设备同时支持本地网页、局域网 HTTP 和云端 MQTT，**联调时只保留一种**，否则指令会互相覆盖。
 
-- Cursor 或 VSCode
-- 安装 ESP-IDF 插件，首选 [ESP-IDF v6.0.2](https://github.com/espressif/esp-idf/releases/tag/v6.0.2)，建议使用 v6.0 或以上的稳定版本；ESP-IDF v5.5.2 仅保留用于旧版硬件兼容
-- Linux 比 Windows 更好，编译速度快，也免去驱动问题的困扰
-- 本项目使用 Google C++ 代码风格，提交代码时请确保符合规范
+### 1. 设备自带网页
 
-### 开发者文档
+| 地址 | 用途 |
+| --- | --- |
+| `http://<设备IP>/motor` | 电机测试台：单轮 A/B、双轮、刹车、trim 微调 |
+| `http://<设备IP>/lidar` | 雷达点云与量程切换 |
+| `ws://<设备IP>/ws/lidar` | 点云 JSON 流 |
 
-- [ESP-IDF 6.0 迁移文档](docs/esp-idf-6-migration.md) - SDK 兼容性、组件变更、旧版硬件支持和板卡验证状态
-- [自定义开发板指南](docs/custom-board_zh.md) - 学习如何为小智 AI 创建自定义开发板
-- [MCP 协议物联网控制用法说明](docs/mcp-usage_zh.md) - 了解如何通过 MCP 协议控制物联网设备
-- [MCP 协议交互流程](docs/mcp-protocol_zh.md) - 设备端 MCP 协议的实现方式
-- [MQTT + UDP 混合通信协议文档](docs/mqtt-udp_zh.md)
-- [一份详细的 WebSocket 通信协议文档](docs/websocket_zh.md)
+### 2. HTTP 接口
 
-## 大模型配置
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/motor/control?motor=A\|B\|both&dir=forward\|backward\|stop\|brake&speed=0..100[&trim=0.2..2]` | 手动驱动 |
+| `GET /api/motor/status` | 双轮方向/速度/RPM/脉冲/trim |
+| `GET /api/motor/tune[?closed=0\|1&kp=&ki=&kd=&gear=&noload=&trim_a=&trim_b=][&save=1]` | 读写闭环与 PID 参数，`save=1` 写 NVS |
+| `GET /api/lidar_status` | 雷达帧数、CRC 错误、转速 |
+| `GET /api/lidar_points` | 最新一帧点云 |
 
-如果你已经拥有一个小智 AI 聊天机器人设备，并且已接入官方服务器，可以登录 [xiaozhi.me](https://xiaozhi.me) 控制台进行配置。
+### 3. 云端 MQTT
 
-👉 [后台操作视频教程（旧版界面）](https://www.bilibili.com/video/BV1jUCUY2EKM/)
+设备连 `mqtt://103.231.59.46:1883`，浏览器走 `ws://103.231.59.46:8083/mqtt`（EMQX 同时开 TCP 与 WS）。
 
-## 相关开源项目
+**下发 `robot/cmd`**
 
-在个人电脑上部署服务器，可以参考以下第三方开源的项目：
+```json
+{"action":"manual","speed_l":60,"speed_r":60}
+{"action":"brake"}
+{"tune":{"closed":1,"gear":76,"kp":1.0,"ki":2.0},"save":1}
+```
 
-- [xinnan-tech/xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server) Python 服务器
-- [joey-zhou/xiaozhi-esp32-server-java](https://github.com/joey-zhou/xiaozhi-esp32-server-java) Java 服务器
-- [AnimeAIChat/xiaozhi-server-go](https://github.com/AnimeAIChat/xiaozhi-server-go) Golang 服务器
-- [hackers365/xiaozhi-esp32-server-golang](https://github.com/hackers365/xiaozhi-esp32-server-golang) Golang 服务器
+`action` 支持 `forward / backward / left / right / stop / brake / manual`；`speed_l`、`speed_r` 范围 -100~100。
 
-使用小智通信协议的第三方客户端项目：
+**遥测 `robot/telemetry`（200ms）**
 
-- [huangjunsen0406/py-xiaozhi](https://github.com/huangjunsen0406/py-xiaozhi) Python 客户端
-- [TOM88812/xiaozhi-android-client](https://github.com/TOM88812/xiaozhi-android-client) Android 客户端
-- [100askTeam/xiaozhi-linux](http://github.com/100askTeam/xiaozhi-linux) 百问科技提供的 Linux 客户端
-- [78/xiaozhi-sf32](https://github.com/78/xiaozhi-sf32) 思澈科技的蓝牙芯片固件
-- [QuecPython/solution-xiaozhiAI](https://github.com/QuecPython/solution-xiaozhiAI) 移远提供的 QuecPython 固件
+```json
+{"rpm_l":96.2,"rpm_r":95.8,"cnt_l":12345,"cnt_r":12300,
+ "tgt_l":96.0,"tgt_r":96.0,"closed":1}
+```
 
-## 关于项目
+**看门狗**：2s 收不到 `robot/cmd` 自动抱死刹车；本地 WS 摇杆另有 300ms 看门狗。
 
-这是一个由虾哥开源的 ESP32 项目，以 MIT 许可证发布，允许任何人免费使用，修改或用于商业用途。
+## 两轮不同步怎么修
 
-我们希望通过这个项目，能够帮助大家了解 AI 硬件开发，将当下飞速发展的大语言模型应用到实际的硬件设备中。
+同一占空比下两轮转速天然不一致。固件提供三级手段，建议按顺序标定：
 
-如果你有任何想法或建议，请随时提出 Issues 或加入 [Discord](https://discord.gg/C759fGMBcZ) 或 QQ 群：1011329060
+**第 1 步 · 校准减速比**（默认 30，必须实测）
 
-## Star History
+悬空一轮，用 `/api/motor/status` 读 `cnt`，手转输出轴一圈再读一次，差值 = `11 × 减速比 × 4`（3344 → 76）。
 
-<a href="https://star-history.com/#78/xiaozhi-esp32&Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=78/xiaozhi-esp32&type=Date" />
- </picture>
-</a>
+```bash
+curl "http://<IP>/api/motor/tune?gear=76&save=1"
+```
+
+**第 2 步 · 量空载满速**
+
+开环 100% 空转，读稳定后的 RPM，写入 `noload`：
+
+```bash
+curl "http://<IP>/api/motor/tune?noload=195&save=1"
+```
+
+**第 3 步 · 开启闭环**
+
+```bash
+curl "http://<IP>/api/motor/tune?closed=1&kp=1.0&ki=2.0&kd=0&save=1"
+```
+
+闭环后 `percent` 会被映射成目标 RPM，PID 直接跟踪编码器实测值，两轮差值应稳定在 2% 以内。抖动就降 `kp`，跟随偏慢就加 `ki`。
+
+**回滚**：`curl "http://<IP>/api/motor/tune?closed=0&save=1"`。
+
+参数全部存 NVS（命名空间 `motor`），断电重启自动恢复。前端 `fwq` 的右轮配平系数在检测到 `closed=1` 后会自动停用，避免和 PID 相互打架。
+
+## Web 控制台（fwq）
+
+```bash
+cd fwq
+npm install          # 仅依赖 ws
+node server.js 8080  # 静态页面 + UDP 8888 雷达桥 + WS 8889
+```
+
+打开 `http://localhost:8080/`，在顶部填 Broker IP / 端口（WebSocket 8083）后连接。
+
+雷达链路：ESP32 每帧通过 UDP 8888 广播 254 字节点云 → `server.js` 转 JSON → WS 8889 → 前端 3D 视图。防火墙需放行 UDP 8888。
+
+> 仓库里的 `index.html` 引用 `unpkg.com` 的 mqtt/three。部署到无外网的服务器时，把这两行换成本地 `vendor/mqtt.min.js`、`vendor/three.min.js`。
+
+## 安全设计
+
+- MQTT 2s / 本地 WS 300ms 双看门狗，失联自动刹车
+- `Brake()` 会同时清零 PID 目标并暂停闭环（修复了"急停后 20ms 又被旧目标加速"的问题）
+- BOOT 长按：立即刹停电机并关闭雷达 PWM
+- 急停指令 `{"action":"brake"}` 与页面急停按钮等价
+
+## 常见问题
+
+| 现象 | 排查 |
+| --- | --- |
+| 雷达无点云 | 确认 UDP 8888 放行、云台电机 PWM 已启动、`/api/lidar_status` 帧数是否递增 |
+| 电机不转 | 检查 AT8870 供电、GPIO 17/18/38/47 接线、`invert_b` 配置 |
+| 两轮反向 | 单轮测试确认极性；必要时只改 `invert_b` 或换相线 |
+| 急停后车又动 | 旧固件闭环遗留 bug，本分支已修，确认烧的是最新固件 |
+| WebSocket 连不上 | 编译配置需 `CONFIG_HTTPD_WS_SUPPORT=y`（`build.py` 已自动追加） |
+| 参数改了没生效 | 加 `&save=1` 才会写 NVS；读回 `GET /api/motor/tune` 确认当前值 |
+| 想恢复出厂参数 | `idf.py erase-flash`（会同时清 Wi-Fi 配置） |
+
+## 分支与版本
+
+- `main`：稳定分支，已合并固件闭环、调参接口与前端改动（PR #1）
+- `test`：调试分支，日常改动先落这里
+- `v1.1.0-test`：闭环版本的冻结标签
+
+## 许可证
+
+MIT License，详见 [LICENSE](LICENSE)。上游项目：[78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)。
+
+硬件与开发细节见 [docs/custom-board.md](docs/custom-board.md)、[docs/esp-idf-6-migration.md](docs/esp-idf-6-migration.md)；板级说明见 [main/boards/xiaozhi-pcb-arm/README.md](main/boards/xiaozhi-pcb-arm/README.md)（部分章节写于骨架阶段，以本文件为准）。
