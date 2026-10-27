@@ -83,7 +83,7 @@ The build script changes local `sdkconfig` and build state. Do not assume the bu
 
 ## Authoritative Documentation
 
-- Overview and SDK policy: `README.md`
+- Overview and SDK policy: `README_zh.md`
 - SDK compatibility: `docs/esp-idf-6-migration.md`
 - Board guide: `docs/custom-board.md`
 - Audio design: `main/audio/README.md`
