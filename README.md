@@ -199,4 +199,4 @@ node server.js 8080  # 静态页面 + UDP 8888 雷达桥 + WS 8889
 
 MIT License，详见 [LICENSE](LICENSE)。上游项目：[78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)。
 
-硬件与开发细节见 [docs/custom-board.md](docs/custom-board.md)、[docs/esp-idf-6-migration.md](docs/esp-idf-6-migration.md)；板级说明见 [main/boards/xiaozhi-pcb-arm/README.md](main/boards/xiaozhi-pcb-arm/README.md)（部分章节写于骨架阶段，以本文件为准）。
+硬件与开发细节见 [docs/custom-board.md](docs/custom-board.md)、[docs/esp-idf-6-migration.md](docs/esp-idf-6-migration.md)；**自主导航（避障/航点/安全层）的架构与接口设计见 [docs/autonomy-design.md](docs/autonomy-design.md)**；板级说明见 [main/boards/xiaozhi-pcb-arm/README.md](main/boards/xiaozhi-pcb-arm/README.md)（部分章节写于骨架阶段，以本文件为准）。
