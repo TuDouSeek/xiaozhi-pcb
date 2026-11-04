@@ -275,8 +275,13 @@ void TelemetryTask(void* arg) {
         }
         // 2s 看门狗：失联自动抱死刹车（Brake 双轮 HIGH，比滑行停更短距离，
         // 与本地 WS 的 300ms 看门狗独立，云端链路延迟大，取 2s）。
+        // 闭环动作（nav）自己管理电机与超时，这里必须让位，否则动作会被拦腰刹停。
         static bool braked = false;
-        if (s_motors != nullptr && NowMs() - s_last_cmd_ms > s_cfg.cmd_timeout_ms) {
+        if (nav_is_active()) {
+            braked = false;
+            s_last_cmd_ms = NowMs();
+        } else if (s_motors != nullptr &&
+                   NowMs() - s_last_cmd_ms > s_cfg.cmd_timeout_ms) {
             if (!braked) {
                 braked = true;
                 s_motors->Brake();
