@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <ctype.h>
 
 #include <esp_http_server.h>
 #include <esp_log.h>
@@ -16,6 +17,7 @@
 #include <lwip/sockets.h>
 
 #include "ld14_driver.h"
+#include "motor_mqtt.h"
 #include "web_emotion.h"
 
 #include <atomic>
@@ -58,6 +60,25 @@ std::atomic<bool> s_driving{false};
 uint32_t s_last_cmd_ms = 0;
 
 int Clamp100(int v) { return v < -100 ? -100 : (v > 100 ? 100 : v); }
+
+// URL 解码：只处理 %XX，URI 里的 '+' 不当作空格（broker URI 用不到）。
+void UrlDecode(char* text) {
+    char* out = text;
+    for (char* in = text; *in != '\0'; ++in) {
+        if (*in == '%' && isxdigit((unsigned char)in[1]) != 0 &&
+            isxdigit((unsigned char)in[2]) != 0) {
+            auto hex = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                return (toupper((unsigned char)c) - 'A') + 10;
+            };
+            *out++ = static_cast<char>((hex(in[1]) << 4) | hex(in[2]));
+            in += 2;
+        } else {
+            *out++ = *in;
+        }
+    }
+    *out = '\0';
+}
 
 // 解析上行 {"cmd":"drive","v":..,"w":..} / {"cmd":"stop"} / {"cmd":"ping"}
 void HandleDriveFrame(const uint8_t* payload, size_t len) {
@@ -375,6 +396,39 @@ esp_err_t OnMotorTune(httpd_req_t* req) {
     return httpd_resp_send(req, body, n);
 }
 
+// GET /api/mqtt                          → 回读当前 broker
+// GET /api/mqtt?uri=mqtt://IP:1883&save=1 → 切换 broker，save=1 写 NVS 并立即重连
+// GET /api/mqtt?reset=1                  → 清除 NVS 覆盖，恢复编译期默认值
+esp_err_t OnMqttConfig(httpd_req_t* req) {
+    SetCors(req);
+    char query[256] = {};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char val[128] = {};
+        if (httpd_query_key_value(query, "reset", val, sizeof(val)) == ESP_OK &&
+            atoi(val) != 0) {
+            if (!motor_mqtt_reset_broker_uri()) {
+                return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR,
+                                           "reset failed");
+            }
+        } else if (httpd_query_key_value(query, "uri", val, sizeof(val)) == ESP_OK) {
+            UrlDecode(val);
+            char save[8] = {};
+            const bool persist = httpd_query_key_value(query, "save", save,
+                                                       sizeof(save)) == ESP_OK &&
+                                 atoi(save) != 0;
+            if (!motor_mqtt_set_broker_uri(val, persist)) {
+                return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                           "invalid uri (need mqtt://host:port)");
+            }
+        }
+    }
+    char body[160];
+    int n = snprintf(body, sizeof(body), "{\"ok\":true,\"uri\":\"%s\"}",
+                     motor_mqtt_broker_uri());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, body, n);
+}
+
 esp_err_t OnLidarStatus(httpd_req_t* req) {
     SetCors(req);
     ld14_features_t f = {};
@@ -496,6 +550,14 @@ void WaiterTask(void* arg) {
                                     .method = HTTP_GET,
                                     .handler = OnMotorTune,
                                     .user_ctx = nullptr};
+    const httpd_uri_t mqtt_cfg = {.uri = "/api/mqtt",
+                                  .method = HTTP_GET,
+                                  .handler = OnMqttConfig,
+                                  .user_ctx = nullptr};
+    const httpd_uri_t mqtt_cfg_opt = {.uri = "/api/mqtt",
+                                      .method = HTTP_OPTIONS,
+                                      .handler = OnOptions,
+                                      .user_ctx = nullptr};
     const httpd_uri_t favicon = {.uri = "/favicon.ico",
                                  .method = HTTP_GET,
                                  .handler = OnFavicon,
@@ -511,12 +573,14 @@ void WaiterTask(void* arg) {
     esp_err_t r9 = httpd_register_uri_handler(hd, &motor_ctrl);
     esp_err_t r10 = httpd_register_uri_handler(hd, &motor_status);
     esp_err_t r11 = httpd_register_uri_handler(hd, &motor_tune);
-    ESP_LOGI(TAG, "Route register: /lidar=%s /ws/lidar=%s /favicon.ico=%s /api/lidar_status=%s+%s /api/lidar_points=%s+%s /motor=%s /api/motor=%s+%s /api/motor/tune=%s",
+    esp_err_t r12 = httpd_register_uri_handler(hd, &mqtt_cfg);
+    esp_err_t r13 = httpd_register_uri_handler(hd, &mqtt_cfg_opt);
+    ESP_LOGI(TAG, "Route register: /lidar=%s /ws/lidar=%s /favicon.ico=%s /api/lidar_status=%s+%s /api/lidar_points=%s+%s /motor=%s /api/motor=%s+%s /api/motor/tune=%s /api/mqtt=%s+%s",
              esp_err_to_name(r1), esp_err_to_name(r2), esp_err_to_name(r3),
              esp_err_to_name(r4), esp_err_to_name(r5),
              esp_err_to_name(r6), esp_err_to_name(r7),
              esp_err_to_name(r8), esp_err_to_name(r9), esp_err_to_name(r10),
-             esp_err_to_name(r11));
+             esp_err_to_name(r11), esp_err_to_name(r12), esp_err_to_name(r13));
     if (r1 != ESP_OK || r2 != ESP_OK) {
         ESP_LOGE(TAG, "Lidar route registration failed, web disabled");
         vTaskDelete(nullptr);

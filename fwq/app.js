@@ -6,11 +6,13 @@
 (function () {
   'use strict';
 
-  var LS_IP = 'fwq_broker_ip';
-  var LS_PORT = 'fwq_broker_port';
+  var CFG = window.FWQ_CONFIG || {};
+  // 键名带 _v2：换服务器后浏览器不会继续沿用旧 IP
+  var LS_IP = 'fwq_broker_ip_v2';
+  var LS_PORT = 'fwq_broker_port_v2';
   var LS_TRIM = 'fwq_bal_r';
-  var DEF_IP = '103.231.59.46';
-  var DEF_PORT = '8083';
+  var DEF_IP = CFG.brokerHost || '';
+  var DEF_PORT = CFG.brokerPort || '8083';
 
   // 直行配平：右轮速度系数（0.8~1.2）。两轮同占空比转速天然不同，
   // 前端按比例缩放右轮指令即可拉直，不需要重烧固件。

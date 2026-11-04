@@ -9,6 +9,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <mqtt_client.h>
+#include <nvs.h>
 
 #include <cJSON.h>
 
@@ -27,6 +28,102 @@ bool s_mqtt_started = false;  // client_start 只允许执行一次（防 Wi-Fi 
 TaskHandle_t s_tel_task = nullptr;
 
 uint32_t NowMs() { return (uint32_t)(esp_timer_get_time() / 1000); }
+
+// ---- 运行时 broker 配置（NVS 覆盖编译期默认值） ----
+constexpr const char* kNvsNamespace = "mqtt";
+constexpr const char* kNvsKeyUri = "uri";
+constexpr size_t kUriMax = 96;
+constexpr const char* kDefaultUri = "mqtt://103.231.59.46:1883";
+
+char s_uri[kUriMax] = "mqtt://103.231.59.46:1883";
+bool s_uri_from_nvs = false;
+
+bool IsSupportedUri(const char* uri) {
+    if (uri == nullptr) {
+        return false;
+    }
+    const size_t len = strlen(uri);
+    if (len < 8 || len >= kUriMax) {
+        return false;
+    }
+    static const char* kPrefixes[] = {"mqtt://", "mqtts://", "tcp://",
+                                      "ssl://", "ws://", "wss://"};
+    for (const char* prefix : kPrefixes) {
+        if (strncmp(uri, prefix, strlen(prefix)) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void StoreUri(const char* uri) {
+    strncpy(s_uri, uri, sizeof(s_uri) - 1);
+    s_uri[sizeof(s_uri) - 1] = '\0';
+}
+
+bool LoadUriFromNvs() {
+    nvs_handle_t handle;
+    if (nvs_open(kNvsNamespace, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+    char buf[kUriMax] = {};
+    size_t len = sizeof(buf);
+    const esp_err_t err = nvs_get_str(handle, kNvsKeyUri, buf, &len);
+    nvs_close(handle);
+    if (err != ESP_OK || !IsSupportedUri(buf)) {
+        return false;
+    }
+    StoreUri(buf);
+    s_uri_from_nvs = true;
+    return true;
+}
+
+bool SaveUriToNvs(const char* uri) {
+    nvs_handle_t handle;
+    if (nvs_open(kNvsNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+        return false;
+    }
+    esp_err_t err = nvs_set_str(handle, kNvsKeyUri, uri);
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+bool EraseUriFromNvs() {
+    nvs_handle_t handle;
+    if (nvs_open(kNvsNamespace, NVS_READWRITE, &handle) != ESP_OK) {
+        return false;
+    }
+    esp_err_t err = nvs_erase_key(handle, kNvsKeyUri);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        err = ESP_OK;
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+void RestartBridge() {
+    if (s_client != nullptr) {
+        esp_mqtt_client_handle_t client = s_client;
+        s_client = nullptr;  // TelemetryTask 看到空指针即退出
+        esp_mqtt_client_stop(client);
+        esp_mqtt_client_destroy(client);
+    }
+    for (int i = 0; i < 20 && s_tel_task != nullptr; ++i) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    s_started = false;
+    s_mqtt_started = false;
+    MotorMqttConfig config = s_cfg;
+    config.broker_uri = s_uri;
+    motor_mqtt_init(s_motors, config);
+}
+
 
 int Clamp100(int v) { return v < -100 ? -100 : (v > 100 ? 100 : v); }
 
@@ -249,6 +346,14 @@ void motor_mqtt_init(MotorController* motors, const MotorMqttConfig& config) {
     }
     s_motors = motors;
     s_cfg = config;
+    if (IsSupportedUri(config.broker_uri)) {
+        StoreUri(config.broker_uri);
+    }
+    s_uri_from_nvs = false;
+    if (LoadUriFromNvs()) {
+        ESP_LOGI(TAG, "使用 NVS 中的 broker: %s", s_uri);
+    }
+    s_cfg.broker_uri = s_uri;
     s_last_cmd_ms = NowMs();
 
     esp_mqtt_client_config_t cfg = {};
@@ -286,4 +391,38 @@ void motor_mqtt_deinit(void) {
         s_client = nullptr;
     }
     // TelemetryTask 检测到 s_client 为空后自杀。
+}
+
+const char* motor_mqtt_broker_uri(void) { return s_uri; }
+
+bool motor_mqtt_set_broker_uri(const char* uri, bool persist) {
+    if (!IsSupportedUri(uri)) {
+        ESP_LOGW(TAG, "broker URI 非法: %s", uri ? uri : "(null)");
+        return false;
+    }
+    if (persist && !SaveUriToNvs(uri)) {
+        ESP_LOGE(TAG, "broker URI 写入 NVS 失败");
+        return false;
+    }
+    StoreUri(uri);
+    s_uri_from_nvs = persist;
+    ESP_LOGI(TAG, "broker 切换为 %s（%s）", s_uri, persist ? "已存 NVS" : "仅本次运行");
+    if (s_started) {
+        RestartBridge();
+    }
+    return true;
+}
+
+bool motor_mqtt_reset_broker_uri(void) {
+    if (!EraseUriFromNvs()) {
+        ESP_LOGE(TAG, "清除 NVS broker 失败");
+        return false;
+    }
+    StoreUri(kDefaultUri);
+    s_uri_from_nvs = false;
+    ESP_LOGI(TAG, "broker 恢复默认值 %s", s_uri);
+    if (s_started) {
+        RestartBridge();
+    }
+    return true;
 }

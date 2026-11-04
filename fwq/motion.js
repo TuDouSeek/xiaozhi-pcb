@@ -1,6 +1,10 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
+  var CFG = window.FWQ_CONFIG || {};
+  // 输入框留空时用 config.js 的默认值，换服务器只改 config.js
+  if ($('brokerIp') && !$('brokerIp').value) $('brokerIp').value = CFG.brokerHost || '';
+  if ($('brokerPort') && !$('brokerPort').value) $('brokerPort').value = CFG.brokerPort || '8083';
   var client = null;
   var connected = false;
   var command = { action: 'stop', speed_l: 0, speed_r: 0 };
@@ -29,7 +33,7 @@
   }
   function connect() {
     if (connected && client) { client.end(); return; }
-    var url = 'ws://' + ($('brokerIp').value.trim() || '103.231.59.46') + ':' + ($('brokerPort').value.trim() || '8083') + '/mqtt';
+    var url = 'ws://' + ($('brokerIp').value.trim() || CFG.brokerHost || '') + ':' + ($('brokerPort').value.trim() || CFG.brokerPort || '8083') + '/mqtt';
     setStatus($('state'), '连接中', 'warn');
     client = mqtt.connect(url, { connectTimeout: 5000, reconnectPeriod: 3000 });
     client.on('connect', function () {

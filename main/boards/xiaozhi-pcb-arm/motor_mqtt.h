@@ -27,4 +27,15 @@ void motor_mqtt_init(MotorController* motors, const MotorMqttConfig& config = {}
 // 停止桥并释放 client（一般不需要调，重启由整机负责）。
 void motor_mqtt_deinit(void);
 
+// 运行时 broker 配置：URI 优先取 NVS（namespace "mqtt" / key "uri"），
+// 未设置时回落到 MotorMqttConfig::broker_uri。换服务器不必重烧固件。
+const char* motor_mqtt_broker_uri(void);
+
+// 切换 broker 并立即重连；persist=true 同时写入 NVS。
+// uri 支持 mqtt:// mqtts:// tcp:// ssl:// ws:// wss://，长度 8..95。
+bool motor_mqtt_set_broker_uri(const char* uri, bool persist);
+
+// 清除 NVS 覆盖值，恢复编译期默认 broker（重启生效）。
+bool motor_mqtt_reset_broker_uri(void);
+
 #endif  // __MOTOR_MQTT_H__

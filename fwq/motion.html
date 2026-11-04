@@ -21,7 +21,7 @@
     <section class="card connection">
       <div class="section-head"><div><span class="eyebrow">01 / LINK</span><h2>控制链路</h2></div><span id="state" class="status offline">离线</span></div>
       <div class="form-row">
-        <label>Broker IP<input id="brokerIp" value="103.231.59.46"></label>
+        <label>Broker IP<input id="brokerIp" placeholder="服务器 IP"></label>
         <label>WebSocket 端口<input id="brokerPort" value="8083" inputmode="numeric"></label>
         <button id="connectBtn" class="primary">连接</button>
         <button id="stopBtn" class="danger">急停</button>
@@ -65,6 +65,7 @@
 
     <footer class="card footer"><b>安全提示</b>：首次测试请抬起机器人，先用 10%～20% 速度；距离动作依赖编码器计数，发现方向、计数或反馈异常立即点击“急停”。</footer>
   </main>
+  <script src="config.js"></script>
   <script src="motion.js"></script>
 </body>
 </html>

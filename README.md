@@ -100,10 +100,13 @@ idf.py -p /dev/cu.usbmodem21401 flash monitor
 | `GET /api/motor/tune[?closed=0\|1&kp=&ki=&kd=&gear=&noload=&trim_a=&trim_b=][&save=1]` | 读写闭环与 PID 参数，`save=1` 写 NVS |
 | `GET /api/lidar_status` | 雷达帧数、CRC 错误、转速 |
 | `GET /api/lidar_points` | 最新一帧点云 |
+| `GET /api/mqtt[?uri=mqtt://IP:1883&save=1]` | 读取/切换云端 broker（写 NVS 并重连）；`?reset=1` 恢复默认 |
 
 ### 3. 云端 MQTT
 
-设备连 `mqtt://103.231.59.46:1883`，浏览器走 `ws://103.231.59.46:8083/mqtt`（EMQX 同时开 TCP 与 WS）。
+设备连 `mqtt://<服务器IP>:1883`，浏览器走 `ws://<服务器IP>:8083/mqtt`（EMQX 同时开 TCP 与 WS）。
+
+换服务器不用重烧固件：`GET /api/mqtt?uri=mqtt://新IP:1883&save=1` 会写入 NVS 并立即重连；`GET /api/mqtt` 回读当前值；`?reset=1` 恢复编译期默认值。前端默认值集中在 `fwq/config.js`。
 
 **下发 `robot/cmd`**
 
