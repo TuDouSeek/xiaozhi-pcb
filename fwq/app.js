@@ -180,13 +180,15 @@
       pub({ action: 'turn', angle_deg: dir * navVal('navAng', 90), speed: sp });
     }
   }
-  $('navFwd').addEventListener('click', function () { navPub('move', 1); });
-  $('navBack').addEventListener('click', function () { navPub('move', -1); });
-  $('navLeft').addEventListener('click', function () { navPub('turn', 1); });
-  $('navRight').addEventListener('click', function () { navPub('turn', -1); });
-  $('navStop').addEventListener('click', function () {
-    pub({ action: 'brake', speed_l: 0, speed_r: 0 });
-  });
+  if ($('navFwd')) {
+    $('navFwd').addEventListener('click', function () { navPub('move', 1); });
+    $('navBack').addEventListener('click', function () { navPub('move', -1); });
+    $('navLeft').addEventListener('click', function () { navPub('turn', 1); });
+    $('navRight').addEventListener('click', function () { navPub('turn', -1); });
+    $('navStop').addEventListener('click', function () {
+      pub({ action: 'brake', speed_l: 0, speed_r: 0 });
+    });
+  }
 
   // ---------- 键盘 ----------
   var keyAct = { KeyW: 'forward', ArrowUp: 'forward', KeyS: 'backward', ArrowDown: 'backward',
