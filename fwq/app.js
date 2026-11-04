@@ -167,6 +167,27 @@
   joyInit();
   $('brakeBtn').addEventListener('click', function () { halt(true); });
 
+  // ---------- 闭环动作：按距离前进/后退、按角度转向 ----------
+  function navVal(id, fallback) {
+    var v = parseFloat($(id).value);
+    return isFinite(v) ? Math.abs(v) : fallback;
+  }
+  function navPub(kind, dir) {
+    var sp = navVal('navSpd', 35) || 35;
+    if (kind === 'move') {
+      pub({ action: 'move', dist_mm: dir * navVal('navDist', 500), speed: sp });
+    } else {
+      pub({ action: 'turn', angle_deg: dir * navVal('navAng', 90), speed: sp });
+    }
+  }
+  $('navFwd').addEventListener('click', function () { navPub('move', 1); });
+  $('navBack').addEventListener('click', function () { navPub('move', -1); });
+  $('navLeft').addEventListener('click', function () { navPub('turn', 1); });
+  $('navRight').addEventListener('click', function () { navPub('turn', -1); });
+  $('navStop').addEventListener('click', function () {
+    pub({ action: 'brake', speed_l: 0, speed_r: 0 });
+  });
+
   // ---------- 键盘 ----------
   var keyAct = { KeyW: 'forward', ArrowUp: 'forward', KeyS: 'backward', ArrowDown: 'backward',
                  KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right' };

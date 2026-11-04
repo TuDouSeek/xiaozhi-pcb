@@ -18,6 +18,8 @@
 
 #include "ld14_driver.h"
 #include "motor_mqtt.h"
+#include "nav_control.h"
+#include "robot_imu.h"
 #include "web_emotion.h"
 
 #include <atomic>
@@ -98,6 +100,9 @@ void HandleDriveFrame(const uint8_t* payload, size_t len) {
         const cJSON* w = cJSON_GetObjectItem(root, "w");
         int iv = Clamp100(cJSON_IsNumber(v) ? v->valueint : 0);
         int iw = Clamp100(cJSON_IsNumber(w) ? w->valueint : 0);
+        if (iv != 0 || iw != 0) {
+            nav_cancel("remote");  // 手动摇杆优先，打断闭环动作
+        }
         // 30ms 节流：保护电机任务不被 WS 洪泛。
         uint32_t now = (uint32_t)(esp_timer_get_time() / 1000);
         if (now - s_last_cmd_ms >= 30 || (iv == 0 && iw == 0)) {
@@ -250,6 +255,7 @@ static int MotorIndex(char m) {
 // GET /api/motor/control?motor=A|B|both&dir=forward|backward|stop|brake&speed=0~100
 esp_err_t OnMotorControl(httpd_req_t* req) {
     SetCors(req);
+    nav_cancel("manual");  // 测试台手动指令优先
     char query[128] = {};
     char motor[8] = {};
     char dir[16] = {};
@@ -429,6 +435,127 @@ esp_err_t OnMqttConfig(httpd_req_t* req) {
     return httpd_resp_send(req, body, n);
 }
 
+// GET /api/imu[?calibrate=1][&reset_yaw=deg]
+esp_err_t OnImuStatus(httpd_req_t* req) {
+    SetCors(req);
+    char query[128] = {};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char val[24] = {};
+        if (httpd_query_key_value(query, "scan", val, sizeof(val)) == ESP_OK &&
+            atoi(val) != 0) {
+            uint8_t addrs[16] = {};
+            const int count = robot_imu_scan(addrs, 16);
+            char body[192];
+            int len = snprintf(body, sizeof(body), "{\"ok\":true,\"devices\":[");
+            for (int i = 0; i < count && len < (int)sizeof(body) - 12; ++i) {
+                len += snprintf(body + len, sizeof(body) - len,
+                                i == 0 ? "\"0x%02X\"" : ",\"0x%02X\"", addrs[i]);
+            }
+            snprintf(body + len, sizeof(body) - len, "]}");
+            httpd_resp_set_type(req, "application/json");
+            return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+        }
+        if (httpd_query_key_value(query, "calibrate", val, sizeof(val)) == ESP_OK &&
+            atoi(val) != 0) {
+            robot_imu_request_calibration();
+        }
+        if (httpd_query_key_value(query, "reset_yaw", val, sizeof(val)) == ESP_OK) {
+            robot_imu_reset_yaw((float)atof(val));
+        }
+    }
+    float yaw = 0, gz = 0, pitch = 0, roll = 0;
+    robot_imu_read(&yaw, &gz, &pitch, &roll);
+    char body[224];
+    int n = snprintf(body, sizeof(body),
+                     "{\"ok\":%s,\"calibrated\":%s,\"yaw\":%.2f,\"gz\":%.2f,"
+                     "\"pitch\":%.2f,\"roll\":%.2f,\"bias\":%.3f,\"temp\":%.1f}",
+                     robot_imu_is_ready() ? "true" : "false",
+                     robot_imu_calib_done() ? "true" : "false", (double)yaw,
+                     (double)gz, (double)pitch, (double)roll,
+                     (double)robot_imu_bias_dps(), (double)robot_imu_temperature());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, body, n);
+}
+
+// GET /api/nav                          → 状态
+// GET /api/nav?op=move&dist_mm=500&speed=40
+// GET /api/nav?op=turn&angle_deg=90&speed=30
+// GET /api/nav?op=cancel
+// GET /api/nav?op=config&counts_per_m=..&yaw_sign=..&save=1
+esp_err_t OnNav(httpd_req_t* req) {
+    SetCors(req);
+    char query[192] = {};
+    char error[48] = "";
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char op[16] = {};
+        if (httpd_query_key_value(query, "op", op, sizeof(op)) == ESP_OK) {
+            char val[24] = {};
+            auto get = [&](const char* key) -> const char* {
+                if (httpd_query_key_value(query, key, val, sizeof(val)) != ESP_OK) {
+                    return nullptr;
+                }
+                return val;
+            };
+            if (strcmp(op, "move") == 0) {
+                const char* dist = get("dist_mm");
+                const char* speed = get("speed");
+                float mm = dist != nullptr ? (float)atof(dist) : 0.0f;
+                if (!nav_start_move(mm, speed != nullptr ? atoi(speed) : 35)) {
+                    strncpy(error, "move rejected", sizeof(error) - 1);
+                }
+            } else if (strcmp(op, "turn") == 0) {
+                const char* angle = get("angle_deg");
+                const char* speed = get("speed");
+                float deg = angle != nullptr ? (float)atof(angle) : 0.0f;
+                if (!nav_start_turn(deg, speed != nullptr ? atoi(speed) : 30)) {
+                    strncpy(error, robot_imu_is_ready() ? "turn rejected"
+                                                        : "imu not ready",
+                            sizeof(error) - 1);
+                }
+            } else if (strcmp(op, "cancel") == 0) {
+                nav_cancel("api");
+            } else if (strcmp(op, "config") == 0) {
+                float cpm = 0.0f, ysign = 1.0f;
+                nav_get_calibration(&cpm, &ysign);
+                const char* c = get("counts_per_m");
+                if (c != nullptr) {
+                    cpm = (float)atof(c);
+                }
+                const char* s = get("yaw_sign");
+                if (s != nullptr) {
+                    ysign = (float)atof(s);
+                }
+                char save[8] = {};
+                const bool persist =
+                    httpd_query_key_value(query, "save", save, sizeof(save)) == ESP_OK &&
+                    atoi(save) != 0;
+                if (!nav_set_calibration(cpm, ysign, persist)) {
+                    strncpy(error, "bad config", sizeof(error) - 1);
+                }
+            } else {
+                strncpy(error, "unknown op", sizeof(error) - 1);
+            }
+        }
+    }
+
+    NavStatus st;
+    nav_get_status(&st);
+    float cpm = 0.0f, ysign = 1.0f;
+    nav_get_calibration(&cpm, &ysign);
+    char body[384];
+    int n = snprintf(body, sizeof(body),
+                     "{\"ok\":%s,\"phase\":\"%s\",\"reason\":\"%s\",\"state\":%d,"
+                     "\"target\":%.1f,\"progress\":%.1f,\"yaw\":%.2f,\"dist_mm\":%.1f,"
+                     "\"elapsed_ms\":%u,\"imu_ok\":%s,\"counts_per_m\":%.0f,"
+                     "\"yaw_sign\":%.0f,\"error\":\"%s\"}",
+                     error[0] == '\0' ? "true" : "false", st.phase, st.reason,
+                     (int)st.state, (double)st.target, (double)st.progress,
+                     (double)st.yaw, (double)st.dist_mm, (unsigned)st.elapsed_ms,
+                     st.imu_ok ? "true" : "false", (double)cpm, (double)ysign, error);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, body, n);
+}
+
 esp_err_t OnLidarStatus(httpd_req_t* req) {
     SetCors(req);
     ld14_features_t f = {};
@@ -489,6 +616,84 @@ esp_err_t OnPage(httpd_req_t* req);
 esp_err_t OnFavicon(httpd_req_t* req);
 esp_err_t OnMotorPage(httpd_req_t* req);  // 实现在下方电机页面区，此处前置声明
 extern const char kPage[];
+
+// ---- 闭环动作页面（/nav）：按距离前进/后退，按角度转向 ----
+const char kNavPage[] = R"HTML(<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>闭环动作</title>
+<style>
+body{background:#0b1118;color:#d7e3f0;font-family:sans-serif;max-width:560px;margin:12px auto;padding:0 12px}
+h2{color:#58c4ff}h3{color:#7d93a8;margin:12px 0 6px}
+.card{background:#141d28;border:1px solid #24405c;border-radius:10px;padding:10px;margin-bottom:10px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin:8px 0}
+button{flex:1;min-width:64px;padding:10px;border-radius:10px;border:1px solid #24405c;background:#17324a;color:#fff;font-size:14px}
+button.warn{background:#3a1414;border-color:#7a2b2b}
+input{width:90px;padding:6px;border-radius:8px;border:1px solid #24405c;background:#0e1720;color:#d7e3f0}
+.tele{font-family:monospace;font-size:13px;color:#7dffb2}
+a{color:#58c4ff;text-decoration:none;font-size:13px}
+</style></head><body>
+<h2>闭环动作</h2>
+<div class="card">
+<div class="row"><span>航向 <b id="yaw">--</b>°</span><span>状态 <b id="phase">--</b></span><span>IMU <b id="imu">--</b></span></div>
+<div class="tele">进度 <b id="pg">0</b> · 用时 <b id="el">0.0</b>s</div>
+<div class="row"><a href="/motor">← 电机测试台</a><a href="/lidar">雷达监控 →</a></div>
+</div>
+<div class="card"><h3>前进 / 后退（编码器闭环）</h3>
+<div class="row">
+<label>距离(mm)<br><input id="dist" type="number" value="500"></label>
+<label>速度(%)<br><input id="spd" type="number" value="35"></label>
+</div>
+<div class="row">
+<button onclick="go('move',1)">前进</button>
+<button onclick="go('move',-1)">后退</button>
+</div>
+</div>
+<div class="card"><h3>转向（IMU 航向闭环）</h3>
+<div class="row"><label>角度(°)<br><input id="ang" type="number" value="90"></label></div>
+<div class="row">
+<button onclick="go('turn',1)">左转</button>
+<button onclick="go('turn',-1)">右转</button>
+</div>
+</div>
+<div class="row">
+<button class="warn" onclick="go('cancel',0)">停止</button>
+<button onclick="calib()">重新标定</button>
+</div>
+<div class="card"><h3>里程标定</h3>
+<div class="row"><label>脉冲/米<br><input id="cpm" type="number"></label></div>
+<div class="row"><button onclick="saveCpm()">保存</button></div>
+<div class="tele">实测：让车走 1m，按 dist_mm 读数反算 counts_per_m = 脉冲数 ÷ 实走米数。</div>
+</div>
+<script>
+function num(id){var v=parseFloat(document.getElementById(id).value);return isFinite(v)?v:0}
+function go(op,dir){
+  var q='op='+op;
+  if(op==='move'){q+='&dist_mm='+(dir*Math.abs(num('dist')))+'&speed='+Math.abs(num('spd'));}
+  if(op==='turn'){q+='&angle_deg='+(dir*Math.abs(num('ang')))+'&speed='+Math.abs(num('spd'));}
+  fetch('/api/nav?'+q).then(poll).catch(function(){});
+}
+function calib(){fetch('/api/imu?calibrate=1').then(poll).catch(function(){});}
+function saveCpm(){fetch('/api/nav?op=config&counts_per_m='+num('cpm')+'&save=1').then(poll).catch(function(){});}
+function poll(){
+  fetch('/api/nav').then(function(r){return r.json()}).then(function(s){
+    document.getElementById('yaw').textContent=Number(s.yaw).toFixed(1);
+    document.getElementById('phase').textContent=s.phase+(s.reason?(' · '+s.reason):'');
+    document.getElementById('pg').textContent=Number(s.progress).toFixed(0);
+    document.getElementById('el').textContent=(Number(s.elapsed_ms)/1000).toFixed(1);
+    document.getElementById('imu').textContent=s.imu_ok?'在线':'离线';
+    if(document.activeElement!==document.getElementById('cpm')){
+      document.getElementById('cpm').value=Math.round(Number(s.counts_per_m));
+    }
+  }).catch(function(){});
+}
+setInterval(poll,250); poll();
+</script></body></html>)HTML";
+
+esp_err_t OnNavPage(httpd_req_t* req) {
+    SetCors(req);
+    httpd_resp_set_type(req, "text/html; charset=utf-8");
+    return httpd_resp_send(req, kNavPage, strlen(kNavPage));
+}
 
 void WaiterTask(void* arg) {
     (void)arg;
@@ -558,6 +763,26 @@ void WaiterTask(void* arg) {
                                       .method = HTTP_OPTIONS,
                                       .handler = OnOptions,
                                       .user_ctx = nullptr};
+    const httpd_uri_t nav_page = {.uri = "/nav",
+                                  .method = HTTP_GET,
+                                  .handler = OnNavPage,
+                                  .user_ctx = nullptr};
+    const httpd_uri_t imu = {.uri = "/api/imu",
+                             .method = HTTP_GET,
+                             .handler = OnImuStatus,
+                             .user_ctx = nullptr};
+    const httpd_uri_t imu_opt = {.uri = "/api/imu",
+                                 .method = HTTP_OPTIONS,
+                                 .handler = OnOptions,
+                                 .user_ctx = nullptr};
+    const httpd_uri_t nav = {.uri = "/api/nav",
+                             .method = HTTP_GET,
+                             .handler = OnNav,
+                             .user_ctx = nullptr};
+    const httpd_uri_t nav_opt = {.uri = "/api/nav",
+                                 .method = HTTP_OPTIONS,
+                                 .handler = OnOptions,
+                                 .user_ctx = nullptr};
     const httpd_uri_t favicon = {.uri = "/favicon.ico",
                                  .method = HTTP_GET,
                                  .handler = OnFavicon,
@@ -575,12 +800,19 @@ void WaiterTask(void* arg) {
     esp_err_t r11 = httpd_register_uri_handler(hd, &motor_tune);
     esp_err_t r12 = httpd_register_uri_handler(hd, &mqtt_cfg);
     esp_err_t r13 = httpd_register_uri_handler(hd, &mqtt_cfg_opt);
-    ESP_LOGI(TAG, "Route register: /lidar=%s /ws/lidar=%s /favicon.ico=%s /api/lidar_status=%s+%s /api/lidar_points=%s+%s /motor=%s /api/motor=%s+%s /api/motor/tune=%s /api/mqtt=%s+%s",
+    esp_err_t r14 = httpd_register_uri_handler(hd, &nav_page);
+    esp_err_t r15 = httpd_register_uri_handler(hd, &imu);
+    esp_err_t r16 = httpd_register_uri_handler(hd, &imu_opt);
+    esp_err_t r17 = httpd_register_uri_handler(hd, &nav);
+    esp_err_t r18 = httpd_register_uri_handler(hd, &nav_opt);
+    ESP_LOGI(TAG, "Route register: /lidar=%s /ws/lidar=%s /favicon.ico=%s /api/lidar_status=%s+%s /api/lidar_points=%s+%s /motor=%s /api/motor=%s+%s /api/motor/tune=%s /api/mqtt=%s+%s /nav=%s /api/imu=%s+%s /api/nav=%s+%s",
              esp_err_to_name(r1), esp_err_to_name(r2), esp_err_to_name(r3),
              esp_err_to_name(r4), esp_err_to_name(r5),
              esp_err_to_name(r6), esp_err_to_name(r7),
              esp_err_to_name(r8), esp_err_to_name(r9), esp_err_to_name(r10),
-             esp_err_to_name(r11), esp_err_to_name(r12), esp_err_to_name(r13));
+             esp_err_to_name(r11), esp_err_to_name(r12), esp_err_to_name(r13),
+             esp_err_to_name(r14), esp_err_to_name(r15), esp_err_to_name(r16),
+             esp_err_to_name(r17), esp_err_to_name(r18));
     if (r1 != ESP_OK || r2 != ESP_OK) {
         ESP_LOGE(TAG, "Lidar route registration failed, web disabled");
         vTaskDelete(nullptr);
@@ -610,6 +842,7 @@ button.warn{background:#3a1414;border-color:#7a2b2b}button.on{outline:2px solid 
 input[type=range]{width:100%;margin:8px 0}.tele{font-family:monospace;font-size:13px;color:#7dffb2}
 #st{margin:8px 0;color:#7d93a8;font-size:13px}</style></head><body>
 <h2>电机测试台</h2><div id="st">连接中…</div>
+<div class="row"><a href="/nav" style="color:#58c4ff">闭环动作（前进距离 / 转向角度）→</a></div>
 <h3>整体联控</h3><div class="card"><div class="row">
 <button onclick="cmd('both','forward')">前进</button>
 <button onclick="cmd('both','backward')">后退</button>

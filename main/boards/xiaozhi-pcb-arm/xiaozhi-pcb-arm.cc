@@ -12,6 +12,8 @@
 #include "assets/lang_config.h"
 #include "motor_controller.h"
 #include "motor_mqtt.h"
+#include "nav_control.h"
+#include "robot_imu.h"
 #include "lidar_driver.h"
 #include "robot_oled_display.h"
 
@@ -288,6 +290,10 @@ private:
 public:
     XiaoZhiPcbArmBoard() : boot_button_(BOOT_BUTTON_GPIO) {
         InitializeDisplayI2c();
+        // BMI270 与 OLED 共用 I2C；未接时只打印告警，不影响启动。
+        if (robot_imu_init(display_i2c_bus_) != ESP_OK) {
+            ESP_LOGW(TAG, "IMU 未就绪，按角度转向功能将不可用");
+        }
         InitializeOledDisplay();
         eyes_ = std::make_unique<EyeDisplay>();
         if (!eyes_->Initialize()) {
@@ -311,6 +317,9 @@ public:
             }
         }
         InitializeMotors();
+        if (motors_) {
+            nav_control_init(motors_.get());
+        }
         // LD14 独立子系统（UART2/GPIO32 解析 + /lidar 可视化），一行接入。
         // 注意：LD14 与既有 lidar 共用 GPIO40(PWM)。若 LD14 已上机，
         // 请注释掉下一行 InitializeLidar()，避免双驱动抢占同一 PWM 引脚。

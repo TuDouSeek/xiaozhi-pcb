@@ -13,6 +13,8 @@
 
 #include <cJSON.h>
 
+#include "nav_control.h"
+
 #define TAG "MotorMqtt"
 
 namespace {
@@ -182,6 +184,20 @@ void HandleCmd(const char* data, int len) {
     const cJSON* action = cJSON_GetObjectItem(root, "action");
     if (cJSON_IsString(action)) {
         const char* a = action->valuestring;
+        const bool is_nav_cmd = strcmp(a, "move") == 0 || strcmp(a, "turn") == 0;
+        if (nav_is_active() && !is_nav_cmd) {
+            const cJSON* hb_l = cJSON_GetObjectItem(root, "speed_l");
+            const cJSON* hb_r = cJSON_GetObjectItem(root, "speed_r");
+            const int lv = cJSON_IsNumber(hb_l) ? hb_l->valueint : 0;
+            const int rv = cJSON_IsNumber(hb_r) ? hb_r->valueint : 0;
+            // 前端 200ms 心跳持续发零速 stop，不能让它打断闭环动作。
+            if (strcmp(a, "brake") != 0 && lv == 0 && rv == 0) {
+                cJSON_Delete(root);
+                return;
+            }
+        }
+        // 真实的手动动作优先打断闭环；move/turn 随后再启动新的。
+        nav_cancel("mqtt");
         // 动作指令：缺 speed 时取默认 60；manual 透传 speed_l/speed_r。
         const cJSON* sl0 = cJSON_GetObjectItem(root, "speed_l");
         const cJSON* sr0 = cJSON_GetObjectItem(root, "speed_r");
@@ -211,6 +227,24 @@ void HandleCmd(const char* data, int len) {
             const cJSON* sr1 = cJSON_GetObjectItem(root, "speed_r");
             int r = cJSON_IsNumber(sr1) ? sr1->valueint : 0;
             ApplyCmd(l, r);
+        } else if (strcmp(a, "move") == 0) {
+            // {"action":"move","dist_mm":500,"speed":35}
+            const cJSON* dist = cJSON_GetObjectItem(root, "dist_mm");
+            const cJSON* speed = cJSON_GetObjectItem(root, "speed");
+            const float mm = cJSON_IsNumber(dist) ? (float)dist->valuedouble : 0.0f;
+            const int sp = cJSON_IsNumber(speed) ? speed->valueint : 35;
+            if (!nav_start_move(mm, sp)) {
+                ESP_LOGW(TAG, "move 指令被拒绝 (dist=%.0f)", (double)mm);
+            }
+        } else if (strcmp(a, "turn") == 0) {
+            // {"action":"turn","angle_deg":90,"speed":30}
+            const cJSON* angle = cJSON_GetObjectItem(root, "angle_deg");
+            const cJSON* speed = cJSON_GetObjectItem(root, "speed");
+            const float deg = cJSON_IsNumber(angle) ? (float)angle->valuedouble : 0.0f;
+            const int sp = cJSON_IsNumber(speed) ? speed->valueint : 30;
+            if (!nav_start_turn(deg, sp)) {
+                ESP_LOGW(TAG, "turn 指令被拒绝 (angle=%.0f)", (double)deg);
+            }
         } else {
             ESP_LOGW(TAG, "未知 action: %s", a);
         }
@@ -222,6 +256,7 @@ void HandleCmd(const char* data, int len) {
     if (cJSON_IsNumber(sl) || cJSON_IsNumber(sr)) {
         int l = cJSON_IsNumber(sl) ? sl->valueint : 0;
         int r = cJSON_IsNumber(sr) ? sr->valueint : 0;
+        nav_cancel("mqtt");
         ApplyCmd(l, r);
         ESP_LOGI(TAG, "cmd L=%d R=%d", Clamp100(l), Clamp100(r));
     } else {

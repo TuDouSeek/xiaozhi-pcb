@@ -198,6 +198,52 @@ node server.js 8080  # 静态页面 + UDP 8888 雷达桥 + WS 8889
 - `test`：调试分支，日常改动先落这里
 - `v1.1.0-test`：闭环版本的冻结标签
 
+## 闭环动作（IMU + 编码器）
+
+BMI270 挂在板级 I2C（与 OLED 共用 GPIO41/42），模块接线：
+
+```
+VCC → 3.3V    GND → GND    SDA → GPIO41    SCL → GPIO42
+SDO → GND（地址 0x68）   CS → 3.3V（I2C 模式必须拉高，悬空会扫不到）
+```
+
+上电后固件自动做 1.5s 静止零偏标定，然后以 200Hz 积分出 `yaw`。网页入口：
+
+```
+http://<设备IP>/nav            闭环动作页（距离/角度/标定）
+http://<设备IP>/motor          电机测试台（页面内有入口链接）
+```
+
+HTTP 接口：
+
+| 接口 | 作用 |
+| --- | --- |
+| `GET /api/imu` | yaw/gz/pitch/roll/零偏/温度 |
+| `GET /api/imu?scan=1` | I2C 扫描，接线自检（应见 `0x3C` 和 `0x68`） |
+| `GET /api/imu?calibrate=1` | 重新标定（机器人必须静止） |
+| `GET /api/nav?op=move&dist_mm=500&speed=35` | 前进 500mm（负值为后退） |
+| `GET /api/nav?op=turn&angle_deg=90&speed=30` | 左转 90°（负值为右转） |
+| `GET /api/nav?op=cancel` | 中止当前动作并刹车 |
+| `GET /api/nav` | 状态：phase/progress/yaw/dist/elapsed |
+| `GET /api/nav?op=config&counts_per_m=15655&yaw_sign=1&save=1` | 里程/航向标定，存 NVS |
+
+MQTT 同样支持（`robot/cmd`）：
+
+```json
+{"action":"move","dist_mm":500,"speed":35}
+{"action":"turn","angle_deg":90,"speed":30}
+{"action":"brake"}
+```
+
+行为约定：
+
+- 距离闭环用编码器（默认 68mm 轮径 → 15655 脉冲/米，用 `/api/nav?op=config` 实测校准）
+- 角度闭环用 IMU 航向，容差 2°；`yaw_sign=-1` 可翻转安装方向
+- 前进时雷达正前方 <250mm 自动中止；堵转 1.2s、超时（20s/15s）自动刹车
+- 手动摇杆、急停、MQTT 手动指令都会立即打断闭环动作；前端 200ms 零速心跳不会误打断
+
+标定里程：让车走 1 米，读 `/api/nav` 的 `dist_mm`，`counts_per_m = 脉冲数 ÷ 实际米数`，用 config 接口保存。
+
 ## 服务器部署（当前实例）
 
 | 项 | 值 |

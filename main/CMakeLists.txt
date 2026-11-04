@@ -68,6 +68,8 @@ if(CONFIG_XIAOZHI_NETWORK_ETHERNET)
     list(APPEND SOURCES "boards/common/ethernet_board.cc")
 endif()
 list(APPEND INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/boards/common)
+# Bosch BMI270 8KB 初始化镜像（robot_imu.cc 直接 include bmi270_image.h）
+list(APPEND INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__bmi270_sensor/firmware")
 
 
 idf_build_get_property(build_components BUILD_COMPONENTS)

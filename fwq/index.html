@@ -72,6 +72,19 @@
 <div class="foot">拖动摇杆或 WASD / 方向键，松手回中，空格急停</div>
 </div>
 
+<div class="card">
+<div class="card-t"><span>闭环动作</span><span class="tag">NAV</span></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<div><div class="lbl">距离 mm</div><input id="navDist" type="number" value="500" style="width:88px;border:1px solid #d3d8e0;background:#f6f7f9;border-radius:8px;padding:6px 8px;font-size:12px"></div>
+<div><div class="lbl">角度 °</div><input id="navAng" type="number" value="90" style="width:76px;border:1px solid #d3d8e0;background:#f6f7f9;border-radius:8px;padding:6px 8px;font-size:12px"></div>
+<div><div class="lbl">速度 %</div><input id="navSpd" type="number" value="35" style="width:64px;border:1px solid #d3d8e0;background:#f6f7f9;border-radius:8px;padding:6px 8px;font-size:12px"></div>
+</div>
+<div class="btns" style="grid-template-columns:repeat(5,1fr)">
+<button id="navFwd">前进</button><button id="navBack">后退</button><button id="navLeft">左转</button><button id="navRight">右转</button><button class="warn" id="navStop">停止</button>
+</div>
+<div class="foot">编码器走距离 / IMU 转角，手动摇杆与急停会立即打断</div>
+</div>
+
 
 <div class="card">
 <div class="card-t"><span>速度曲线</span><span class="tag">RPM LOG</span></div>
