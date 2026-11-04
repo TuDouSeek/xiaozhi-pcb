@@ -13,7 +13,7 @@
 
 // 下发通道抽象：默认直接绑 MotorController，也便于单元测试替换。
 struct MotorMqttConfig {
-    const char* broker_uri = "mqtt://103.231.59.46:1883";
+    const char* broker_uri = "mqtt://103.236.92.193:60008";
     const char* client_id = "xiaozhi_robot_s3";
     const char* topic_cmd = "robot/cmd";
     const char* topic_telemetry = "robot/telemetry";

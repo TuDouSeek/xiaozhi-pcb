@@ -33,9 +33,9 @@ uint32_t NowMs() { return (uint32_t)(esp_timer_get_time() / 1000); }
 constexpr const char* kNvsNamespace = "mqtt";
 constexpr const char* kNvsKeyUri = "uri";
 constexpr size_t kUriMax = 96;
-constexpr const char* kDefaultUri = "mqtt://103.231.59.46:1883";
+constexpr const char* kDefaultUri = "mqtt://103.236.92.193:60008";
 
-char s_uri[kUriMax] = "mqtt://103.231.59.46:1883";
+char s_uri[kUriMax] = "mqtt://103.236.92.193:60008";
 bool s_uri_from_nvs = false;
 
 bool IsSupportedUri(const char* uri) {

@@ -8,7 +8,7 @@
  * 修改，不需要重新烧录。
  */
 window.FWQ_CONFIG = {
-  brokerHost: '',        // 例：'203.0.113.10' 或 'mqtt.example.com'
-  brokerPort: '8083',    // EMQX WebSocket 监听端口
-  udpPort: 8888          // 雷达 UDP 广播端口（fwq/server.js 使用）
+  brokerHost: '103.236.92.193',  // NAT 外部 IP
+  brokerPort: '38488',           // NAT 外部 WebSocket 端口（内部 8083）
+  udpPort: 8888                  // 雷达 UDP 广播端口（fwq/server.js 使用）
 };

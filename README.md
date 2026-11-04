@@ -104,9 +104,9 @@ idf.py -p /dev/cu.usbmodem21401 flash monitor
 
 ### 3. 云端 MQTT
 
-设备连 `mqtt://<服务器IP>:1883`，浏览器走 `ws://<服务器IP>:8083/mqtt`（EMQX 同时开 TCP 与 WS）。
+设备连 `mqtt://103.236.92.193:60008`（NAT 外部端口，转发到内部 1883），浏览器走 `ws://103.236.92.193:38488/mqtt`（外部 38488 → 内部 8083）。
 
-换服务器不用重烧固件：`GET /api/mqtt?uri=mqtt://新IP:1883&save=1` 会写入 NVS 并立即重连；`GET /api/mqtt` 回读当前值；`?reset=1` 恢复编译期默认值。前端默认值集中在 `fwq/config.js`。
+换服务器不用重烧固件：`GET /api/mqtt?uri=mqtt://新IP:新端口&save=1` 会写入 NVS 并立即重连；`GET /api/mqtt` 回读当前值；`?reset=1` 恢复编译期默认值。前端默认值集中在 `fwq/config.js`。
 
 **下发 `robot/cmd`**
 
@@ -197,6 +197,28 @@ node server.js 8080  # 静态页面 + UDP 8888 雷达桥 + WS 8889
 - `main`：稳定分支，已合并固件闭环、调参接口与前端改动（PR #1）
 - `test`：调试分支，日常改动先落这里
 - `v1.1.0-test`：闭环版本的冻结标签
+
+## 服务器部署（当前实例）
+
+| 项 | 值 |
+| --- | --- |
+| 云主机 | `103.236.92.193`（Ubuntu 24.04，2C2G） |
+| Broker | Mosquitto 2.0.18，配置 `/etc/mosquitto/conf.d/robot.conf` |
+| 监听 | `1883/tcp`（设备）+ `8083` WebSocket（浏览器），允许匿名 |
+| NAT 映射 | 外部 `60008` → `1883`；外部 `38488` → `8083`；SSH 外部 `58620` → `22` |
+| 控制台 | nginx 站点 `/www/wwwroot/robot`，内部 `8080`（80 端口被机房拦截） |
+
+```bash
+# 设备侧连通性验证（任意一台 Linux 机器）
+mosquitto_sub -h 103.236.92.193 -p 60008 -t 'robot/telemetry' -v
+
+# 浏览器 WebSocket 验证
+curl -i -H 'Upgrade: websocket' -H 'Connection: Upgrade' \
+  -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==' \
+  http://103.236.92.193:38488/mqtt
+```
+
+> 公网匿名 MQTT 意味着任何人都能下发 `robot/cmd`。上线前建议加用户名密码或 ACL（固件已预留 `credentials` 配置点）。
 
 ## 许可证
 
