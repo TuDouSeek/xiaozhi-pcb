@@ -228,6 +228,56 @@
     slider.addEventListener('pointerdown', function () {
       activeTrackSlider = { slider: slider, valId: valId, motor: motor };
     });
+
+    // 坦克式操纵杆：大把手，整块区域可拖，直接映射 -100..+100。
+    var row = slider.parentNode;
+    var lever = document.createElement('div');
+    lever.className = 'lever';
+    lever.innerHTML = '<div class="lever-track"><span class="lever-center"></span>' +
+      '<div class="lever-handle"><i></i><i></i><i></i></div></div>';
+    row.appendChild(lever);
+    var track = lever.querySelector('.lever-track');
+    var handle = lever.querySelector('.lever-handle');
+    var dragging = false;
+    function syncLever() {
+      var h = track.clientHeight;
+      var hh = handle.offsetHeight;
+      if (!h) return;
+      var p = (+slider.value + 100) / 200;
+      handle.style.top = (hh / 2 + (1 - p) * (h - hh)) + 'px';
+    }
+    function setFromY(y) {
+      var r = track.getBoundingClientRect();
+      var p = 1 - (y - r.top) / r.height;
+      p = p < 0 ? 0 : (p > 1 ? 1 : p);
+      var v = Math.round(p * 200 - 100);
+      if (v !== +slider.value) {
+        slider.value = v;
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      syncLever();
+    }
+    lever.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      dragging = true;
+      activeTrackSlider = { slider: slider, valId: valId, motor: motor };
+      if (lever.setPointerCapture) lever.setPointerCapture(e.pointerId);
+      setFromY(e.clientY);
+    });
+    lever.addEventListener('pointermove', function (e) {
+      if (dragging) setFromY(e.clientY);
+    });
+    lever.addEventListener('pointerup', function () {
+      dragging = false;
+      releaseTrackSlider();
+    });
+    lever.addEventListener('pointercancel', function () {
+      dragging = false;
+      releaseTrackSlider();
+    });
+    slider._syncLever = syncLever;
+    window.addEventListener('resize', syncLever);
+    setTimeout(syncLever, 0);
   }
   function releaseTrackSlider() {
     if (!activeTrackSlider) return;
@@ -235,6 +285,7 @@
     activeTrackSlider = null;
     track.slider.value = 0;
     $(track.valId).textContent = '0';
+    if (track.slider._syncLever) track.slider._syncLever();
     if (track.motor === 'A') man.l = 0; else man.r = 0;
     intent = { action: 'manual', speed_l: man.l, speed_r: man.r };
     pub(intent);
@@ -255,6 +306,7 @@
       }
       $(sliderId).value = v;
       $(valId).textContent = v;
+      if ($(sliderId)._syncLever) $(sliderId)._syncLever();
       if (motor === 'A') man.l = v; else man.r = v;
       intent = { action: 'manual', speed_l: man.l, speed_r: man.r };
       pub(intent);
