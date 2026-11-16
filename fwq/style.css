@@ -104,7 +104,7 @@ input[type=range]{width:100%;accent-color:#0e9f6e}
 /* 桌面端滑杆加宽一点，鼠标更好拖 */
 .track-dock .track-control input[type=range]{width:36px}
 
-/* ===== 移动端：坦克式履带操纵杆（84x96 大把手，整块区域可拖） ===== */
+/* ===== 移动端：竖轨道 + 胶囊滑块（整块区域可拖） ===== */
 .lever{display:none}
 @media(max-width:760px){
   .track-dock{grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch;gap:10px}
@@ -112,19 +112,15 @@ input[type=range]{width:100%;accent-color:#0e9f6e}
   .track-dock .track-control{padding:10px 8px;gap:8px}
   .track-control-h{font-size:12px}
   .track-control-h b{font-size:20px}
-  .track-slider-row{position:relative;height:clamp(240px,46vh,420px);width:100%;display:block}
-  .track-dock .track-slider-row .track-scale{position:absolute;left:0;top:12px;bottom:12px;height:auto;width:auto;flex-direction:column;justify-content:space-between;align-items:flex-start;font-size:11px;color:#8a94a3}
+  .track-slider-row{position:relative;height:clamp(260px,50vh,460px);width:100%;display:block}
+  .track-dock .track-slider-row .track-scale{position:absolute;left:0;top:16px;bottom:16px;height:auto;width:auto;flex-direction:column;justify-content:space-between;align-items:flex-start;font-size:11px;color:#8a94a3}
   .track-dock .track-slider-row input[type=range]{position:absolute;inset:0;width:100%;height:100%;opacity:0;pointer-events:none;-webkit-appearance:none;appearance:none}
   .lever{display:block;position:absolute;inset:0;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
   .lever:active{cursor:grabbing}
-  .lever-track{position:absolute;top:10px;bottom:10px;left:50%;transform:translateX(-50%);width:34px;border-radius:17px;background:linear-gradient(180deg,#e6eaef,#c7cfd8);border:1px solid #d3dae2}
-  .lever-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:3px;border-radius:2px;background:#9aa6b3}
-  .lever-handle{position:absolute;left:50%;top:50%;transform:translateX(-50%);width:84px;height:96px;border-radius:22px;background:linear-gradient(180deg,#13bd85,#0e9f6e);border:3px solid #fff;box-shadow:0 8px 18px rgba(14,159,110,.45),inset 0 1px 0 rgba(255,255,255,.4);display:flex;flex-direction:column;justify-content:center;align-items:center;gap:7px}
-  .lever-handle i{display:block;width:44px;height:5px;border-radius:3px;background:rgba(255,255,255,.85)}
-  .lever-handle i:nth-child(2){opacity:.55}
-}
-@media(max-width:380px){
-  .lever-handle{width:72px;height:84px}
-  .lever-handle i{width:36px}
-  .track-control-h b{font-size:18px}
+  .lever-track{position:absolute;top:16px;bottom:16px;left:50%;transform:translateX(-50%);width:18px;border-radius:9px;background:#e3e8ee;border:1px solid #d6dce4}
+  .lever-fill{position:absolute;left:0;width:100%;border-radius:9px;background:#0e9f6e;transition:top .06s linear,height .06s linear}
+  .lever-backward .lever-fill{background:#f59e0b}
+  .lever-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:2px;border-radius:1px;background:rgba(120,130,145,.55);z-index:2}
+  .lever-handle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:46px;height:64px;border-radius:23px;background:#fff;border:3px solid #0e9f6e;box-shadow:0 4px 12px rgba(17,24,39,.22);z-index:3;transition:top .06s linear,border-color .12s}
+  .lever-backward .lever-handle{border-color:#f59e0b}
 }

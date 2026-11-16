@@ -229,22 +229,30 @@
       activeTrackSlider = { slider: slider, valId: valId, motor: motor };
     });
 
-    // 坦克式操纵杆：大把手，整块区域可拖，直接映射 -100..+100。
+    // 坦克式操纵杆：大胶囊滑块 + 细轨道 + 填充段，整块区域可拖。
     var row = slider.parentNode;
     var lever = document.createElement('div');
     lever.className = 'lever';
-    lever.innerHTML = '<div class="lever-track"><span class="lever-center"></span>' +
-      '<div class="lever-handle"><i></i><i></i><i></i></div></div>';
+    lever.innerHTML = '<div class="lever-track"><div class="lever-fill"></div>' +
+      '<span class="lever-center"></span><div class="lever-handle"></div></div>';
     row.appendChild(lever);
     var track = lever.querySelector('.lever-track');
     var handle = lever.querySelector('.lever-handle');
+    var fill = lever.querySelector('.lever-fill');
     var dragging = false;
     function syncLever() {
       var h = track.clientHeight;
       var hh = handle.offsetHeight;
       if (!h) return;
       var p = (+slider.value + 100) / 200;
-      handle.style.top = (hh / 2 + (1 - p) * (h - hh)) + 'px';
+      var y = hh / 2 + (1 - p) * (h - hh);
+      handle.style.top = y + 'px';
+      var c = h / 2;
+      var top = Math.min(c, y);
+      var len = Math.abs(y - c);
+      fill.style.top = top + 'px';
+      fill.style.height = len + 'px';
+      lever.classList.toggle('lever-backward', y > c + 1);
     }
     function setFromY(y) {
       var r = track.getBoundingClientRect();
