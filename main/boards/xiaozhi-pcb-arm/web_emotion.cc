@@ -100,13 +100,13 @@ void WebEmotionServer::StarterTask(void* arg) {
     // max_open_sockets 上限为 7，超配会直接 httpd_start failed。
     // keep-alive + LRU：轮询短连接复用不堆积，槽满时淘汰最久未用，
     // 杜绝 accept ENFILE(23) 挤爆。
-    // max_uri_handlers 16：默认 8 个 URI 槽被 emotion(3)+资源/OTA 路由占去大半，
-    // lidar 系 7 条（/lidar,/ws/lidar,/favicon,/api/lidar_status×2,/api/lidar_points×2）
-    // 否则最后两条注册报 ESP_ERR_HTTPD_HANDLERS_FULL，前端拿 404。
+    // max_uri_handlers 32：emotion(3) + 资源/OTA + lidar 7 条，再叠加
+    // /motor、/api/motor/*(4)、/nav、/api/nav、/api/imu 等，16 已不够用，
+    // 后面的路由会报 ESP_ERR_HTTPD_HANDLERS_FULL 直接 404。
     config.max_open_sockets = 7;
     config.lru_purge_enable = true;
     config.keep_alive_enable = true;
-    config.max_uri_handlers = 16;
+    config.max_uri_handlers = 32;
     if (httpd_start(&self->server_, &config) != ESP_OK) {
         ESP_LOGE(TAG, "httpd_start failed");
         self->server_ = nullptr;
